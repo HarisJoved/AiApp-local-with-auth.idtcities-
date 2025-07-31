@@ -1,0 +1,27 @@
+{
+  "embedder": {
+    "type": "huggingface",
+    "openai": null,
+    "huggingface": {
+      "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+      "device": "cpu",
+      "trust_remote_code": true,
+      "cache_dir": null
+    }
+  },
+  "vector_db": {
+    "type": "pinecone",
+    "pinecone": {
+      "api_key": "pcsk_AZ4n1_La7oBgiELWMMzMH2cBGNvFAraEquWiXZJmLoBT6tFhDH8jWawLZ5QyhwWzpGEzy",
+      "environment": "us-east1-aws",
+      "index_name": "documents",
+      "dimension": 384,
+      "metric": "cosine"
+    },
+    "chromadb": null,
+    "qdrant": null
+  },
+  "max_file_size": 10485760,
+  "chunk_size": 1000,
+  "chunk_overlap": 200
+}

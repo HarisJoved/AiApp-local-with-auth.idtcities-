@@ -1,0 +1,45 @@
+# FastAPI and web server
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Data validation and settings
+pydantic
+pydantic-settings
+
+# Document processing with LangChain
+langchain
+langchain-community
+
+# Document loaders
+pypdf
+docx2txt
+unstructured[local-inference]
+python-magic
+python-magic-bin  # For Windows compatibility
+
+# Text processing
+tiktoken
+
+# Embeddings
+openai
+sentence-transformers
+torch
+transformers
+
+# Vector databases
+pinecone
+chromadb
+qdrant-client
+
+# Utilities
+python-dotenv
+aiofiles
+httpx
+
+# Development and testing
+pytest
+pytest-asyncio
+black
+isort
+mypy
