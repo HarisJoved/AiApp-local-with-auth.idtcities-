@@ -10,15 +10,14 @@
     }
   },
   "vector_db": {
-    "type": "pinecone",
-    "pinecone": {
-      "api_key": "pcsk_AZ4n1_La7oBgiELWMMzMH2cBGNvFAraEquWiXZJmLoBT6tFhDH8jWawLZ5QyhwWzpGEzy",
-      "environment": "us-east1-aws",
-      "index_name": "documents",
-      "dimension": 384,
-      "metric": "cosine"
+    "type": "chromadb",
+    "pinecone": null,
+    "chromadb": {
+      "host": "localhost",
+      "port": 8008,
+      "collection_name": "documents",
+      "persist_directory": "/my_chroma_data"
     },
-    "chromadb": null,
     "qdrant": null
   },
   "max_file_size": 10485760,
