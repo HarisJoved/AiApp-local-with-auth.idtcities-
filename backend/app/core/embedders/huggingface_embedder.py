@@ -15,17 +15,27 @@ class HuggingFaceEmbedder(BaseEmbedder):
         self.config = config
         self.model_name = config.model_name
         self.device = config.device
+        self.batch_size = config.batch_size
+        
+        # Prepare model kwargs
+        model_kwargs = {
+            'device': self.device,
+            'trust_remote_code': config.trust_remote_code,
+            **(config.model_kwargs if config.model_kwargs is not None else {})
+        }
+        
+        if config.cache_dir:
+            model_kwargs['cache_folder'] = config.cache_dir
         
         # Load the model
-        self.model = SentenceTransformer(
-            self.model_name,
-            device=self.device,
-            trust_remote_code=config.trust_remote_code,
-            cache_folder=config.cache_dir
-        )
+        self.model = SentenceTransformer(self.model_name, **model_kwargs)
         
         # Get model dimension
         self._dimension = self.model.get_sentence_embedding_dimension()
+        
+        # Configure max sequence length if specified
+        if config.max_seq_length:
+            self.model.max_seq_length = config.max_seq_length
     
     async def embed_text(self, text: str) -> List[float]:
         """Generate embedding for a single text"""
@@ -43,11 +53,21 @@ class HuggingFaceEmbedder(BaseEmbedder):
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for multiple texts"""
         try:
+            # Prepare encoding kwargs
+            encode_kwargs = {
+                'batch_size': self.batch_size,
+                'convert_to_tensor': self.config.convert_to_tensor,
+                'convert_to_numpy': self.config.convert_to_numpy,
+                'normalize_embeddings': self.config.normalize_embeddings,
+                'show_progress_bar': self.config.show_progress_bar or len(texts) > 10,
+                **(self.config.encode_kwargs if self.config.encode_kwargs is not None else {})
+            }
+            
             # Run in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             embeddings = await loop.run_in_executor(
                 None,
-                lambda: self.model.encode(texts, convert_to_tensor=False, show_progress_bar=len(texts) > 10)
+                lambda: self.model.encode(texts, **encode_kwargs)
             )
             
             # Convert to list of lists

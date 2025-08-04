@@ -40,16 +40,31 @@ class OpenAIEmbedder(BaseEmbedder):
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for multiple texts"""
         try:
-            # OpenAI has a limit on batch size, so we might need to chunk
-            batch_size = 100  # Adjust based on OpenAI limits
+            # Filter texts based on configuration
+            if self.config.skip_empty:
+                texts = [text for text in texts if text.strip()]
+            
+            if self.config.strip_new_lines:
+                texts = [text.replace('\n', ' ').replace('\r', ' ') for text in texts]
+            
+            # Use configured batch size
+            batch_size = self.config.batch_size
             all_embeddings = []
             
             for i in range(0, len(texts), batch_size):
                 batch = texts[i:i + batch_size]
-                response = await self.client.embeddings.create(
-                    model=self.model_name,
-                    input=batch
-                )
+                
+                # Prepare request parameters
+                request_params = {
+                    'model': self.model_name,
+                    'input': batch
+                }
+                
+                # Add dimensions if specified (for newer models)
+                if self.config.dimensions and self.model_name in ['text-embedding-3-small', 'text-embedding-3-large']:
+                    request_params['dimensions'] = self.config.dimensions
+                
+                response = await self.client.embeddings.create(**request_params)
                 batch_embeddings = [item.embedding for item in response.data]
                 all_embeddings.extend(batch_embeddings)
             

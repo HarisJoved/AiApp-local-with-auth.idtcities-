@@ -19,6 +19,12 @@ class OpenAIEmbedderConfig(BaseModel):
     model_name: str = Field(default="text-embedding-ada-002", description="OpenAI embedding model")
     organization: Optional[str] = Field(None, description="OpenAI organization ID")
     timeout: int = Field(default=30, description="Request timeout in seconds")
+    batch_size: int = Field(default=100, description="Batch size for processing multiple texts")
+    max_retries: int = Field(default=3, description="Maximum number of retries for failed requests")
+    request_timeout: int = Field(default=30, description="Request timeout in seconds")
+    dimensions: Optional[int] = Field(None, description="Vector dimensions (auto-detected if not specified)")
+    strip_new_lines: bool = Field(default=True, description="Strip new lines from input text")
+    skip_empty: bool = Field(default=True, description="Skip empty texts")
 
 
 class HuggingFaceEmbedderConfig(BaseModel):
@@ -26,6 +32,16 @@ class HuggingFaceEmbedderConfig(BaseModel):
     device: str = Field(default="cpu", description="Device to run the model on")
     trust_remote_code: bool = Field(default=False, description="Trust remote code")
     cache_dir: Optional[str] = Field(None, description="Cache directory for models")
+    batch_size: int = Field(default=32, description="Batch size for processing multiple texts")
+    max_seq_length: Optional[int] = Field(None, description="Maximum sequence length (auto-detected if not specified)")
+    dimensions: Optional[int] = Field(None, description="Vector dimensions (auto-detected if not specified)")
+    normalize_embeddings: bool = Field(default=False, description="Normalize embeddings to unit length")
+    show_progress_bar: bool = Field(default=False, description="Show progress bar during encoding")
+    convert_to_numpy: bool = Field(default=True, description="Convert output to numpy arrays")
+    convert_to_tensor: bool = Field(default=False, description="Convert output to tensors")
+    device_map: Optional[str] = Field(None, description="Device mapping for multi-GPU setups")
+    model_kwargs: Optional[Dict[str, Any]] = Field(default=None, description="Additional model arguments")
+    encode_kwargs: Optional[Dict[str, Any]] = Field(default=None, description="Additional encoding arguments")
 
 
 class EmbedderConfig(BaseModel):

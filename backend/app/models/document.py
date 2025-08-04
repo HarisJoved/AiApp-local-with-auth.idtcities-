@@ -10,6 +10,9 @@ class DocumentType(str, Enum):
     TXT = "txt"
     HTML = "html"
     MARKDOWN = "markdown"
+    PPTX = "pptx"
+    XLSX = "xlsx"
+    XLS = "xls"
 
 
 class DocumentStatus(str, Enum):

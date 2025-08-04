@@ -7,7 +7,9 @@ from langchain_community.document_loaders import (
     Docx2txtLoader,
     TextLoader,
     UnstructuredHTMLLoader,
-    UnstructuredMarkdownLoader
+    UnstructuredMarkdownLoader,
+    UnstructuredPowerPointLoader,
+    UnstructuredExcelLoader
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
@@ -33,7 +35,10 @@ class LangChainDocumentProcessor(BaseDocumentProcessor):
             DocumentType.DOCX: Docx2txtLoader,
             DocumentType.TXT: TextLoader,
             DocumentType.HTML: UnstructuredHTMLLoader,
-            DocumentType.MARKDOWN: UnstructuredMarkdownLoader
+            DocumentType.MARKDOWN: UnstructuredMarkdownLoader,
+            DocumentType.PPTX: UnstructuredPowerPointLoader,
+            DocumentType.XLSX: UnstructuredExcelLoader,
+            DocumentType.XLS: UnstructuredExcelLoader
         }
     
     async def load_document(self, file_path: Path, file_type: DocumentType) -> str:

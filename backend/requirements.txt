@@ -17,6 +17,9 @@ docx2txt
 unstructured[local-inference]
 python-magic
 python-magic-bin  # For Windows compatibility
+python-pptx  # For PowerPoint files
+openpyxl  # For Excel files
+xlrd  # For older Excel files (.xls)
 
 # Text processing
 tiktoken

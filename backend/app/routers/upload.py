@@ -22,7 +22,10 @@ def get_document_type(filename: str) -> DocumentType:
         'txt': DocumentType.TXT,
         'html': DocumentType.HTML,
         'md': DocumentType.MARKDOWN,
-        'markdown': DocumentType.MARKDOWN
+        'markdown': DocumentType.MARKDOWN,
+        'pptx': DocumentType.PPTX,
+        'xlsx': DocumentType.XLSX,
+        'xls': DocumentType.XLS
     }
     
     if extension not in type_mapping:
