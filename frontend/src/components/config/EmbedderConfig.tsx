@@ -15,6 +15,11 @@ const EmbedderConfig: React.FC<EmbedderConfigProps> = ({ initialConfig, onConfig
         model_name: 'sentence-transformers/all-MiniLM-L6-v2',
         device: 'cpu',
         trust_remote_code: false,
+        batch_size: 32,
+        normalize_embeddings: false,
+        show_progress_bar: false,
+        convert_to_numpy: true,
+        convert_to_tensor: false,
       },
     }
   );
@@ -29,12 +34,22 @@ const EmbedderConfig: React.FC<EmbedderConfigProps> = ({ initialConfig, onConfig
         api_key: '',
         model_name: 'text-embedding-ada-002',
         timeout: 30,
+        batch_size: 100,
+        max_retries: 3,
+        request_timeout: 30,
+        strip_new_lines: true,
+        skip_empty: true,
       };
     } else if (type === 'huggingface') {
       newConfig.huggingface = {
         model_name: 'sentence-transformers/all-MiniLM-L6-v2',
         device: 'cpu',
         trust_remote_code: false,
+        batch_size: 32,
+        normalize_embeddings: false,
+        show_progress_bar: false,
+        convert_to_numpy: true,
+        convert_to_tensor: false,
       };
     }
     
@@ -135,6 +150,103 @@ const EmbedderConfig: React.FC<EmbedderConfigProps> = ({ initialConfig, onConfig
                 placeholder="org-..."
               />
             </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Batch Size
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="2048"
+                  value={config.openai?.batch_size || 100}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    openai: { ...config.openai!, batch_size: parseInt(e.target.value) || 100 }
+                  })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Timeout (seconds)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="300"
+                  value={config.openai?.timeout || 30}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    openai: { ...config.openai!, timeout: parseInt(e.target.value) || 30 }
+                  })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Custom Dimensions (Optional)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={config.openai?.dimensions || ''}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    openai: { ...config.openai!, dimensions: e.target.value ? parseInt(e.target.value) : undefined }
+                  })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Auto-detect"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Max Retries
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  value={config.openai?.max_retries || 3}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    openai: { ...config.openai!, max_retries: parseInt(e.target.value) || 3 }
+                  })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={config.openai?.strip_new_lines || true}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    openai: { ...config.openai!, strip_new_lines: e.target.checked }
+                  })}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">Strip New Lines</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={config.openai?.skip_empty || true}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    openai: { ...config.openai!, skip_empty: e.target.checked }
+                  })}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">Skip Empty Texts</span>
+              </label>
+            </div>
           </div>
         )}
 
@@ -178,6 +290,74 @@ const EmbedderConfig: React.FC<EmbedderConfigProps> = ({ initialConfig, onConfig
             </div>
             
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Cache Directory (Optional)
+              </label>
+              <input
+                type="text"
+                value={config.huggingface?.cache_dir || ''}
+                onChange={(e) => setConfig({
+                  ...config,
+                  huggingface: { ...config.huggingface!, cache_dir: e.target.value || undefined }
+                })}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="/path/to/cache/dir"
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Batch Size
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="512"
+                  value={config.huggingface?.batch_size || 32}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    huggingface: { ...config.huggingface!, batch_size: parseInt(e.target.value) || 32 }
+                  })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Max Sequence Length
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={config.huggingface?.max_seq_length || ''}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    huggingface: { ...config.huggingface!, max_seq_length: e.target.value ? parseInt(e.target.value) : undefined }
+                  })}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Auto-detect"
+                />
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Vector Dimensions (Optional)
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={config.huggingface?.dimensions || ''}
+                onChange={(e) => setConfig({
+                  ...config,
+                  huggingface: { ...config.huggingface!, dimensions: e.target.value ? parseInt(e.target.value) : undefined }
+                })}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Auto-detect from model"
+              />
+            </div>
+            
+            <div className="space-y-2">
               <label className="flex items-center">
                 <input
                   type="checkbox"
@@ -189,6 +369,18 @@ const EmbedderConfig: React.FC<EmbedderConfigProps> = ({ initialConfig, onConfig
                   className="mr-2"
                 />
                 <span className="text-sm text-gray-700">Trust Remote Code</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={config.huggingface?.normalize_embeddings || false}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    huggingface: { ...config.huggingface!, normalize_embeddings: e.target.checked }
+                  })}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">Normalize Embeddings</span>
               </label>
             </div>
           </div>

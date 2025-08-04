@@ -39,10 +39,10 @@ const Sidebar: React.FC = () => {
           <span>Upload & Process</span>
         </Link>
         
-        <Link to="/search" className={linkClass('/search')}>
+        {/* <Link to="/search" className={linkClass('/search')}>
           <Search className="w-4 h-4" />
           <span>Search Documents</span>
-        </Link>
+        </Link> */}
         
         <Link to="/documents" className={linkClass('/documents')}>
           <FileText className="w-4 h-4" />

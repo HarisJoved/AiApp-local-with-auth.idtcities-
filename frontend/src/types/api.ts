@@ -1,5 +1,5 @@
 // Document types
-export type DocumentType = 'pdf' | 'docx' | 'txt' | 'html' | 'markdown';
+export type DocumentType = 'pdf' | 'docx' | 'txt' | 'html' | 'markdown' | 'pptx' | 'xlsx' | 'xls';
 export type DocumentStatus = 'uploaded' | 'processing' | 'processed' | 'embedded' | 'error';
 
 export interface Document {
@@ -37,6 +37,12 @@ export interface OpenAIEmbedderConfig {
   model_name: string;
   organization?: string;
   timeout: number;
+  batch_size: number;
+  max_retries: number;
+  request_timeout: number;
+  dimensions?: number;
+  strip_new_lines: boolean;
+  skip_empty: boolean;
 }
 
 export interface HuggingFaceEmbedderConfig {
@@ -44,6 +50,16 @@ export interface HuggingFaceEmbedderConfig {
   device: string;
   trust_remote_code: boolean;
   cache_dir?: string;
+  batch_size: number;
+  max_seq_length?: number;
+  dimensions?: number;
+  normalize_embeddings: boolean;
+  show_progress_bar: boolean;
+  convert_to_numpy: boolean;
+  convert_to_tensor: boolean;
+  device_map?: string;
+  model_kwargs?: Record<string, any> | null;
+  encode_kwargs?: Record<string, any> | null;
 }
 
 export interface EmbedderConfig {

@@ -40,7 +40,10 @@ const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onUploadComplete })
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
       'text/plain': ['.txt'],
       'text/html': ['.html'],
-      'text/markdown': ['.md', '.markdown']
+      'text/markdown': ['.md', '.markdown'],
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'application/vnd.ms-excel': ['.xls']
     },
     multiple: false,
     maxSize: 10 * 1024 * 1024, // 10MB
@@ -77,7 +80,7 @@ const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onUploadComplete })
           </div>
           
           <div className="text-xs text-gray-400">
-            Supported formats: PDF, DOCX, TXT, HTML, Markdown
+            Supported formats: PDF, DOCX, TXT, HTML, Markdown, PPTX, XLSX, XLS
             <br />
             Maximum file size: 10MB
           </div>
