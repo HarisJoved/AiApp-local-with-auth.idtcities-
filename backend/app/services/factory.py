@@ -1,6 +1,6 @@
 from typing import Optional
 
-from app.models.config import AppConfig, EmbedderType, VectorDBType
+from app.models.config import AppConfig, EmbedderType, VectorDBType, ChatModelType
 from app.core.embedders.base import BaseEmbedder
 from app.core.embedders.openai_embedder import OpenAIEmbedder
 from app.core.embedders.huggingface_embedder import HuggingFaceEmbedder
@@ -8,6 +8,10 @@ from app.core.vector_db.base import BaseVectorDBClient
 from app.core.vector_db.pinecone_client import PineconeClient
 from app.core.vector_db.chromadb_client import ChromaDBClient
 from app.core.vector_db.qdrant_client import QdrantDBClient
+from app.core.chat_models.base import BaseChatModel
+from app.core.chat_models.openai_chat import OpenAIChatModel
+from app.core.chat_models.gemini_chat import GeminiChatModel
+from app.core.chat_models.local_chat import LocalChatModel
 
 
 class ServiceFactory:
@@ -65,6 +69,37 @@ class ServiceFactory:
             return None
     
     @staticmethod
+    def create_chat_model(config: AppConfig) -> Optional[BaseChatModel]:
+        """Create chat model instance based on configuration"""
+        try:
+            if not config.chat_model:
+                return None
+                
+            chat_config = config.chat_model
+            
+            if chat_config.type == ChatModelType.OPENAI:
+                if not chat_config.openai:
+                    raise ValueError("OpenAI chat configuration is required")
+                return OpenAIChatModel(chat_config.openai.model_dump())
+            
+            elif chat_config.type == ChatModelType.GEMINI:
+                if not chat_config.gemini:
+                    raise ValueError("Gemini chat configuration is required")
+                return GeminiChatModel(chat_config.gemini.model_dump())
+            
+            elif chat_config.type == ChatModelType.LOCAL:
+                if not chat_config.local:
+                    raise ValueError("Local chat configuration is required")
+                return LocalChatModel(chat_config.local.model_dump())
+            
+            else:
+                raise ValueError(f"Unsupported chat model type: {chat_config.type}")
+                
+        except Exception as e:
+            print(f"Failed to create chat model: {e}")
+            return None
+    
+    @staticmethod
     async def initialize_services(config: AppConfig) -> tuple[Optional[BaseEmbedder], Optional[BaseVectorDBClient]]:
         """Initialize both embedder and vector database services"""
         embedder = ServiceFactory.create_embedder(config)
@@ -93,6 +128,14 @@ class ServiceFactory:
                 vector_db = None
         
         return embedder, vector_db
+    
+    @staticmethod
+    async def initialize_all_services(config: AppConfig) -> tuple[Optional[BaseEmbedder], Optional[BaseVectorDBClient], Optional[BaseChatModel]]:
+        """Initialize embedder, vector database, and chat model services"""
+        embedder, vector_db = await ServiceFactory.initialize_services(config)
+        chat_model = ServiceFactory.create_chat_model(config)
+        
+        return embedder, vector_db, chat_model
 
 
 # Global factory instance

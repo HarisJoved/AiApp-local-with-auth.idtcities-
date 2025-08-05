@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
-from app.models.config import EmbedderConfig, VectorDBConfig, AppConfig
+from app.models.config import EmbedderConfig, VectorDBConfig, ChatModelConfig, AppConfig
 from app.config.settings import config_manager
 from app.services.factory import service_factory
 from app.services.document_service import document_service
@@ -66,6 +66,13 @@ async def update_embedder_config(embedder_config: EmbedderConfig):
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save embedder configuration")
         
+        # Reset chat service to pick up new configuration
+        try:
+            from app.routers.chat import reset_rag_service
+            reset_rag_service()
+        except ImportError:
+            pass  # Chat service might not be loaded yet
+        
         # Update document service
         document_service.set_embedder(embedder)
         
@@ -119,6 +126,13 @@ async def update_vector_db_config(vector_db_config: VectorDBConfig):
         success = await config_manager.update_vector_db_config(vector_db_config)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save vector database configuration")
+        
+        # Reset chat service to pick up new configuration
+        try:
+            from app.routers.chat import reset_rag_service
+            reset_rag_service()
+        except ImportError:
+            pass  # Chat service might not be loaded yet
         
         # Update document service
         document_service.set_vector_db(vector_db)
@@ -236,4 +250,183 @@ async def reset_configuration():
         return {"message": "Configuration reset to default values"}
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to reset configuration: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Failed to reset configuration: {str(e)}")
+
+
+@router.post("/chat-model")
+async def update_chat_model_config(chat_model_config: ChatModelConfig):
+    """Update chat model configuration"""
+    try:
+        # Get current config or create a minimal one
+        current_config = config_manager.get_current_config()
+        if not current_config:
+            # Need embedder and vector DB to create a valid config
+            from app.models.config import (
+                EmbedderConfig, EmbedderType, HuggingFaceEmbedderConfig,
+                VectorDBConfig, VectorDBType, ChromaDBConfig
+            )
+            embedder_config = EmbedderConfig(
+                type=EmbedderType.HUGGINGFACE,
+                huggingface=HuggingFaceEmbedderConfig()
+            )
+            vector_db_config = VectorDBConfig(
+                type=VectorDBType.CHROMADB,
+                chromadb=ChromaDBConfig()
+            )
+            current_config = AppConfig(
+                embedder=embedder_config,
+                vector_db=vector_db_config
+            )
+        
+        # Validate configuration by creating chat model
+        temp_config = AppConfig(
+            embedder=current_config.embedder,
+            vector_db=current_config.vector_db,
+            chat_model=chat_model_config,
+            max_file_size=current_config.max_file_size,
+            chunk_size=current_config.chunk_size,
+            chunk_overlap=current_config.chunk_overlap
+        )
+        
+        chat_model = service_factory.create_chat_model(temp_config)
+        if not chat_model:
+            raise ValueError("Failed to create chat model with provided configuration")
+        
+        # Update configuration
+        new_config = AppConfig(
+            embedder=current_config.embedder,
+            vector_db=current_config.vector_db,
+            chat_model=chat_model_config,
+            max_file_size=current_config.max_file_size,
+            chunk_size=current_config.chunk_size,
+            chunk_overlap=current_config.chunk_overlap,
+            rag_top_k=current_config.rag_top_k if hasattr(current_config, 'rag_top_k') else 5,
+            rag_similarity_threshold=current_config.rag_similarity_threshold if hasattr(current_config, 'rag_similarity_threshold') else 0.7,
+            rag_max_context_length=current_config.rag_max_context_length if hasattr(current_config, 'rag_max_context_length') else 4000,
+            session_storage_type=current_config.session_storage_type if hasattr(current_config, 'session_storage_type') else "memory",
+            session_storage_path=current_config.session_storage_path if hasattr(current_config, 'session_storage_path') else "sessions",
+            session_max_age_days=current_config.session_max_age_days if hasattr(current_config, 'session_max_age_days') else 30
+        )
+        
+        await config_manager.save_config(new_config)
+        
+        # Reset chat service to pick up new configuration
+        try:
+            from app.routers.chat import reset_rag_service
+            reset_rag_service()
+        except ImportError:
+            pass  # Chat service might not be loaded yet
+        
+        return {
+            "message": "Chat model configuration updated successfully",
+            "chat_model_info": chat_model.get_model_info()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update chat model config: {str(e)}")
+
+
+@router.get("/chat-model")
+async def get_chat_model_config():
+    """Get current chat model configuration"""
+    try:
+        config = config_manager.get_current_config()
+        if not config or not config.chat_model:
+            return {"message": "No chat model configuration found", "configured": False}
+        
+        return {
+            "configured": True,
+            "config": config.chat_model.model_dump()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get chat model config: {str(e)}")
+
+
+@router.delete("/chat-model")
+async def remove_chat_model_config():
+    """Remove chat model configuration"""
+    try:
+        current_config = config_manager.get_current_config()
+        if not current_config:
+            raise HTTPException(status_code=404, detail="No configuration found")
+        
+        # Create new config without chat model
+        new_config = AppConfig(
+            embedder=current_config.embedder,
+            vector_db=current_config.vector_db,
+            chat_model=None,
+            max_file_size=current_config.max_file_size,
+            chunk_size=current_config.chunk_size,
+            chunk_overlap=current_config.chunk_overlap
+        )
+        
+        await config_manager.save_config(new_config)
+        
+        return {"message": "Chat model configuration removed"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to remove chat model config: {str(e)}")
+
+
+@router.post("/rag")
+async def update_rag_config(
+    top_k: int = 5,
+    similarity_threshold: float = 0.7,
+    max_context_length: int = 4000
+):
+    """Update RAG (Retrieval-Augmented Generation) configuration"""
+    try:
+        current_config = config_manager.get_current_config()
+        if not current_config:
+            raise HTTPException(status_code=404, detail="No configuration found")
+        
+        # Update RAG settings
+        new_config = AppConfig(
+            embedder=current_config.embedder,
+            vector_db=current_config.vector_db,
+            chat_model=current_config.chat_model,
+            max_file_size=current_config.max_file_size,
+            chunk_size=current_config.chunk_size,
+            chunk_overlap=current_config.chunk_overlap,
+            rag_top_k=top_k,
+            rag_similarity_threshold=similarity_threshold,
+            rag_max_context_length=max_context_length,
+            session_storage_type=current_config.session_storage_type if hasattr(current_config, 'session_storage_type') else "memory",
+            session_storage_path=current_config.session_storage_path if hasattr(current_config, 'session_storage_path') else "sessions",
+            session_max_age_days=current_config.session_max_age_days if hasattr(current_config, 'session_max_age_days') else 30
+        )
+        
+        await config_manager.save_config(new_config)
+        
+        # Reset chat service to pick up new configuration
+        try:
+            from app.routers.chat import reset_rag_service
+            reset_rag_service()
+        except ImportError:
+            pass  # Chat service might not be loaded yet
+        
+        return {
+            "message": "RAG configuration updated successfully",
+            "config": {
+                "top_k": top_k,
+                "similarity_threshold": similarity_threshold,
+                "max_context_length": max_context_length
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update RAG config: {str(e)}")
+
+
+@router.post("/reset-chat-service")
+async def reset_chat_service():
+    """Reset the chat service to reinitialize with current configuration"""
+    try:
+        from app.routers.chat import reset_rag_service
+        reset_rag_service()
+        return {"message": "Chat service reset successfully"}
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Chat service not available")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reset chat service: {str(e)}") 

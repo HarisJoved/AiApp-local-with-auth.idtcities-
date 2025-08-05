@@ -105,7 +105,7 @@ class PineconeClient(BaseVectorDBClient):
                     })
             
             if vectors:
-                self.index.upsert(vectors=vectors)
+                await asyncio.to_thread(self.index.upsert, vectors=vectors)
             
             return True
         except Exception as e:
@@ -123,8 +123,9 @@ class PineconeClient(BaseVectorDBClient):
             if not self.index:
                 await self.initialize()
             
-            # Perform search
-            results = self.index.query(
+            # Perform search (run in thread to avoid blocking event loop)
+            results = await asyncio.to_thread(
+                self.index.query,
                 vector=query_vector,
                 top_k=top_k,
                 include_metadata=True,
@@ -154,7 +155,7 @@ class PineconeClient(BaseVectorDBClient):
             if not self.index:
                 await self.initialize()
             
-            self.index.delete(ids=chunk_ids)
+            await asyncio.to_thread(self.index.delete, ids=chunk_ids)
             return True
         except Exception as e:
             raise RuntimeError(f"Failed to delete vectors from Pinecone: {str(e)}")
@@ -165,7 +166,7 @@ class PineconeClient(BaseVectorDBClient):
             if not self.index:
                 await self.initialize()
             
-            stats = self.index.describe_index_stats()
+            stats = await asyncio.to_thread(self.index.describe_index_stats)
             return {
                 "total_vectors": stats.total_vector_count,
                 "dimension": stats.dimension,

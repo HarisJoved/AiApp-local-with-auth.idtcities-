@@ -14,6 +14,12 @@ class VectorDBType(str, Enum):
     QDRANT = "qdrant"
 
 
+class ChatModelType(str, Enum):
+    OPENAI = "openai"
+    GEMINI = "gemini"
+    LOCAL = "local"
+
+
 class OpenAIEmbedderConfig(BaseModel):
     api_key: str = Field(..., description="OpenAI API key")
     model_name: str = Field(default="text-embedding-ada-002", description="OpenAI embedding model")
@@ -80,9 +86,58 @@ class VectorDBConfig(BaseModel):
     qdrant: Optional[QdrantDBConfig] = None
 
 
+class OpenAIChatConfig(BaseModel):
+    api_key: str = Field(..., description="OpenAI API key")
+    model: str = Field(default="gpt-3.5-turbo", description="OpenAI chat model")
+    organization: Optional[str] = Field(None, description="OpenAI organization ID")
+    temperature: float = Field(default=0.7, description="Sampling temperature (0.0 to 2.0)")
+    max_tokens: int = Field(default=1000, description="Maximum tokens in response")
+    top_p: float = Field(default=1.0, description="Nucleus sampling parameter")
+    frequency_penalty: float = Field(default=0.0, description="Frequency penalty (-2.0 to 2.0)")
+    presence_penalty: float = Field(default=0.0, description="Presence penalty (-2.0 to 2.0)")
+
+
+class GeminiChatConfig(BaseModel):
+    api_key: str = Field(..., description="Google AI API key")
+    model: str = Field(default="gemini-2.0-flash", description="Gemini model name")
+    temperature: float = Field(default=0.7, description="Sampling temperature (0.0 to 1.0)")
+    max_tokens: int = Field(default=1000, description="Maximum tokens in response")
+    top_p: float = Field(default=1.0, description="Nucleus sampling parameter")
+    top_k: int = Field(default=40, description="Top-k sampling parameter")
+
+
+class LocalChatConfig(BaseModel):
+    provider: str = Field(default="ollama", description="Local provider (ollama or transformers)")
+    model: str = Field(default="llama2", description="Model name")
+    temperature: float = Field(default=0.7, description="Sampling temperature")
+    max_tokens: int = Field(default=1000, description="Maximum tokens in response")
+    top_p: float = Field(default=1.0, description="Nucleus sampling parameter")
+    top_k: int = Field(default=40, description="Top-k sampling parameter")
+    ollama_url: str = Field(default="http://localhost:11434", description="Ollama server URL")
+    trust_remote_code: bool = Field(default=True, description="Trust remote code (for transformers)")
+
+
+class ChatModelConfig(BaseModel):
+    type: ChatModelType
+    openai: Optional[OpenAIChatConfig] = None
+    gemini: Optional[GeminiChatConfig] = None
+    local: Optional[LocalChatConfig] = None
+
+
 class AppConfig(BaseModel):
     embedder: EmbedderConfig
     vector_db: VectorDBConfig
+    chat_model: Optional[ChatModelConfig] = Field(None, description="Chat model configuration")
     max_file_size: int = Field(default=10 * 1024 * 1024, description="Max file size in bytes")
     chunk_size: int = Field(default=1000, description="Text chunk size for splitting")
-    chunk_overlap: int = Field(default=200, description="Overlap between chunks") 
+    chunk_overlap: int = Field(default=200, description="Overlap between chunks")
+    
+    # RAG-specific settings
+    rag_top_k: int = Field(default=5, description="Number of top chunks to retrieve for RAG")
+    rag_similarity_threshold: float = Field(default=0.7, description="Minimum similarity threshold for retrieval")
+    rag_max_context_length: int = Field(default=4000, description="Maximum context length for RAG")
+    
+    # Session settings
+    session_storage_type: str = Field(default="memory", description="Session storage type (memory, file)")
+    session_storage_path: str = Field(default="sessions", description="Path for file-based session storage")
+    session_max_age_days: int = Field(default=30, description="Maximum age of sessions in days") 

@@ -117,7 +117,8 @@ class ChromaDBClient(BaseVectorDBClient):
                     documents.append(chunk.content)
             
             if ids:
-                self.collection.upsert(
+                await asyncio.to_thread(
+                    self.collection.upsert,
                     ids=ids,
                     embeddings=embeddings,
                     metadatas=metadatas,
@@ -140,8 +141,9 @@ class ChromaDBClient(BaseVectorDBClient):
             if not self.collection:
                 await self.initialize()
             
-            # Perform search
-            results = self.collection.query(
+            # Perform search (run in thread to avoid blocking event loop)
+            results = await asyncio.to_thread(
+                self.collection.query,
                 query_embeddings=[query_vector],
                 n_results=top_k,
                 where=filter_metadata,
@@ -177,7 +179,7 @@ class ChromaDBClient(BaseVectorDBClient):
             if not self.collection:
                 await self.initialize()
             
-            self.collection.delete(ids=chunk_ids)
+            await asyncio.to_thread(self.collection.delete, ids=chunk_ids)
             return True
         except Exception as e:
             raise RuntimeError(f"Failed to delete vectors from ChromaDB: {str(e)}")
@@ -188,11 +190,12 @@ class ChromaDBClient(BaseVectorDBClient):
             if not self.collection:
                 await self.initialize()
             
-            count = self.collection.count()
+            count = await asyncio.to_thread(self.collection.count)
+            metadata = await asyncio.to_thread(lambda: self.collection.metadata)
             return {
                 "total_vectors": count,
                 "collection_name": self.collection_name,
-                "metadata": self.collection.metadata
+                "metadata": metadata
             }
         except Exception as e:
             raise RuntimeError(f"Failed to get ChromaDB stats: {str(e)}") 

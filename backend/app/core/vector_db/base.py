@@ -57,6 +57,46 @@ class BaseVectorDBClient(ABC):
         """Get statistics about the collection"""
         pass
     
+    async def search(
+        self, 
+        query_embedding: List[float], 
+        top_k: int = 5, 
+        similarity_threshold: float = 0.0,
+        filter_metadata: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for similar vectors (RAG-compatible interface)
+        
+        This method provides a simplified interface for the RAG service.
+        It maps to the search_vectors method and returns results in a format
+        expected by the RAG pipeline.
+        """
+        try:
+            # Call the concrete implementation's search_vectors method
+            search_results = await self.search_vectors(
+                query_vector=query_embedding,
+                top_k=top_k,
+                threshold=similarity_threshold,
+                filter_metadata=filter_metadata
+            )
+            
+            # Convert SearchResult objects to dictionaries for RAG compatibility
+            formatted_results = []
+            for result in search_results:
+                formatted_results.append({
+                    "content": result.content,
+                    "score": result.score,
+                    "metadata": {
+                        **result.metadata,
+                        "chunk_id": result.chunk_id,
+                        "document_id": result.document_id
+                    }
+                })
+            
+            return formatted_results
+        except Exception as e:
+            raise RuntimeError(f"Failed to search vectors: {str(e)}")
+
     async def batch_upsert_vectors(self, chunks: List[DocumentChunk], batch_size: int = 100) -> bool:
         """Upsert vectors in batches to avoid memory/network issues"""
         try:
