@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Settings, Upload, Search, FileText, Activity } from 'lucide-react';
+import { Settings, Upload, Search, FileText, Activity, MessageSquare } from 'lucide-react';
 
 // Components
+import ErrorBoundary from './components/ErrorBoundary';
 import EmbedderConfig from './components/config/EmbedderConfig';
 import VectorDBConfig from './components/config/VectorDBConfig';
+import ChatModelConfig from './components/config/ChatModelConfig';
 import DocumentUploader from './components/upload/DocumentUploader';
 import DocumentList from './components/results/DocumentList';
 import SearchInterface from './components/results/SearchInterface';
+import ChatInterface from './components/chat/ChatInterface';
 
 // Services
 import { configAPI, generalAPI } from './services/api';
@@ -39,10 +42,15 @@ const Sidebar: React.FC = () => {
           <span>Upload & Process</span>
         </Link>
         
-        {/* <Link to="/search" className={linkClass('/search')}>
+        <Link to="/chat" className={linkClass('/chat')}>
+          <MessageSquare className="w-4 h-4" />
+          <span>AI Chat</span>
+        </Link>
+        
+        <Link to="/search" className={linkClass('/search')}>
           <Search className="w-4 h-4" />
           <span>Search Documents</span>
-        </Link> */}
+        </Link>
         
         <Link to="/documents" className={linkClass('/documents')}>
           <FileText className="w-4 h-4" />
@@ -104,9 +112,18 @@ const DocumentsPage: React.FC<{ refreshTrigger: number }> = ({ refreshTrigger })
   </div>
 );
 
+const ChatPage: React.FC = () => (
+  <div className="h-full -m-8">
+    <ErrorBoundary>
+      <ChatInterface className="h-screen" />
+    </ErrorBoundary>
+  </div>
+);
+
 const ConfigPage: React.FC<{ onConfigUpdate: () => void }> = ({ onConfigUpdate }) => {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'embedder' | 'vectordb' | 'chat'>('embedder');
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -136,22 +153,62 @@ const ConfigPage: React.FC<{ onConfigUpdate: () => void }> = ({ onConfigUpdate }
     );
   }
 
+  const tabs = [
+    { id: 'embedder', label: 'Embedder', icon: Upload },
+    { id: 'vectordb', label: 'Vector Database', icon: FileText },
+    { id: 'chat', label: 'Chat Model', icon: MessageSquare },
+  ] as const;
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900">System Configuration</h2>
-        <p className="text-gray-600 mt-1">Configure your embedder and vector database settings</p>
+        <p className="text-gray-600 mt-1">Configure your embedder, vector database, and chat model settings</p>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <EmbedderConfig 
-          initialConfig={config?.embedder} 
-          onConfigUpdate={handleConfigUpdate}
-        />
-        <VectorDBConfig 
-          initialConfig={config?.vector_db} 
-          onConfigUpdate={handleConfigUpdate}
-        />
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  isActive
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      <div className="mt-6">
+        {activeTab === 'embedder' && (
+          <EmbedderConfig 
+            initialConfig={config?.embedder} 
+            onConfigUpdate={handleConfigUpdate}
+          />
+        )}
+        
+        {activeTab === 'vectordb' && (
+          <VectorDBConfig 
+            initialConfig={config?.vector_db} 
+            onConfigUpdate={handleConfigUpdate}
+          />
+        )}
+        
+        {activeTab === 'chat' && (
+          <ChatModelConfig onConfigUpdate={handleConfigUpdate} />
+        )}
       </div>
     </div>
   );
@@ -219,9 +276,9 @@ const HealthPage: React.FC = () => {
             </div>
             {health.embedder.info && (
               <div className="text-sm text-gray-600 space-y-1">
-                <p><strong>Provider:</strong> {health.embedder.info.provider}</p>
-                <p><strong>Model:</strong> {health.embedder.info.model_name}</p>
-                <p><strong>Dimension:</strong> {health.embedder.info.dimension}</p>
+                <p><strong>Provider:</strong> {health.embedder.info.provider || 'Unknown'}</p>
+                <p><strong>Model:</strong> {health.embedder.info.model_name || 'Unknown'}</p>
+                <p><strong>Dimension:</strong> {health.embedder.info.dimension || 'Unknown'}</p>
               </div>
             )}
             {health.embedder.error && (
@@ -285,6 +342,7 @@ const App: React.FC = () => {
           <div className="max-w-7xl mx-auto px-6 py-8">
             <Routes>
               <Route path="/" element={<UploadPage onUpload={handleUpload} />} />
+              <Route path="/chat" element={<ChatPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/documents" element={<DocumentsPage refreshTrigger={refreshTrigger} />} />
               <Route path="/config" element={<ConfigPage onConfigUpdate={handleConfigUpdate} />} />

@@ -130,16 +130,32 @@ export interface SearchResponse {
 }
 
 // Health check types
+export interface EmbedderHealthInfo {
+  provider?: string;
+  model_name?: string;
+  dimension?: number;
+  device?: string;
+  max_seq_length?: number;
+  trust_remote_code?: boolean;
+  [key: string]: any;
+}
+
+export interface VectorDBHealthStats {
+  total_vectors?: number;
+  collection_name?: string;
+  [key: string]: any;
+}
+
 export interface HealthStatus {
   configured: boolean;
   embedder: {
     healthy: boolean;
-    info?: any;
+    info?: EmbedderHealthInfo;
     error?: string;
   };
   vector_db: {
     healthy: boolean;
-    stats?: any;
+    stats?: VectorDBHealthStats;
     error?: string;
   };
 } 
