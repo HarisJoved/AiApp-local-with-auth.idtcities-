@@ -148,6 +148,7 @@ class LangChainRAGService:
             raise ValueError("Embeddings must be initialized first")
             
         vector_db_config = self.config.vector_db
+        print(f"    Initializing vectorstore for type: {vector_db_config.type}")
         
         if vector_db_config.type == VectorDBType.PINECONE:
             if not vector_db_config.pinecone:
@@ -156,6 +157,8 @@ class LangChainRAGService:
             from pinecone import Pinecone
             from langchain_pinecone import PineconeVectorStore
             
+            print(f"    Pinecone config: index={vector_db_config.pinecone.index_name}")
+            
             # Initialize Pinecone client and pass it to the vectorstore
             pc = Pinecone(api_key=vector_db_config.pinecone.api_key)
             
@@ -163,9 +166,19 @@ class LangChainRAGService:
             import os
             os.environ['PINECONE_API_KEY'] = vector_db_config.pinecone.api_key
             
+            # Check if index exists and has data
+            try:
+                index = pc.Index(vector_db_config.pinecone.index_name)
+                stats = index.describe_index_stats()
+                print(f"    Pinecone index stats: {stats}")
+            except Exception as e:
+                print(f"    Error checking Pinecone index: {e}")
+            
+            # Use existing index with custom retriever
             self.vectorstore = PineconeVectorStore.from_existing_index(
                 index_name=vector_db_config.pinecone.index_name,
-                embedding=self.embeddings
+                embedding=self.embeddings,
+                text_key="content"  # Use content field from metadata
             )
             
         elif vector_db_config.type == VectorDBType.CHROMADB:
@@ -174,11 +187,20 @@ class LangChainRAGService:
             
             from langchain_chroma import Chroma
             
+            print(f"    ChromaDB config: collection={vector_db_config.chromadb.collection_name}, persist_dir={vector_db_config.chromadb.persist_directory}")
+            
             self.vectorstore = Chroma(
                 collection_name=vector_db_config.chromadb.collection_name,
                 embedding_function=self.embeddings,
                 persist_directory=vector_db_config.chromadb.persist_directory
             )
+            
+            # Check if collection has data
+            try:
+                count = self.vectorstore.collection.count()
+                print(f"    ChromaDB collection count: {count}")
+            except Exception as e:
+                print(f"    Error checking ChromaDB collection: {e}")
             
         else:
             raise ValueError(f"Unsupported vector database type: {vector_db_config.type}")
@@ -222,7 +244,7 @@ class LangChainRAGService:
         if not self.vectorstore or not self.chat_model:
             raise ValueError("Vectorstore and chat model must be initialized first")
         
-        # Create retriever
+        # Create retriever with proper search parameters
         retriever = self.vectorstore.as_retriever(
             search_kwargs={"k": self.retrieval_config["top_k"]}
         )
@@ -297,18 +319,45 @@ Answer:""")
         
         try:
             if use_rag and self.retrieval_qa and self.vectorstore:
+                # Debug: Check if vectorstore has documents
+                try:
+                    # Try to get document count
+                    if hasattr(self.vectorstore, 'index'):
+                        # Pinecone
+                        stats = await asyncio.to_thread(self.vectorstore.index.describe_index_stats)
+                        total_vectors = stats.get('total_vector_count', 0)
+                        print(f"🔍 Vectorstore has {total_vectors} vectors")
+                    elif hasattr(self.vectorstore, 'collection'):
+                        # ChromaDB
+                        count = await asyncio.to_thread(self.vectorstore.collection.count)
+                        print(f"🔍 Vectorstore has {count} documents")
+                    else:
+                        print("🔍 Vectorstore type not recognized for counting")
+                except Exception as e:
+                    print(f"🔍 Error checking vectorstore: {e}")
+                
                 # Use RAG with LangChain
                 retrieval_start = datetime.utcnow()
                 
                 # Get conversation memory
                 memory = self._get_memory(session_id)
                 
+                # Debug: Test direct retrieval
+                try:
+                    retriever = self.vectorstore.as_retriever(search_kwargs={"k": 3})
+                    docs = await asyncio.to_thread(retriever.get_relevant_documents, message)
+                    print(f"🔍 Direct retrieval found {len(docs)} documents")
+                    for i, doc in enumerate(docs):
+                        print(f"  Doc {i}: {doc.page_content[:100]}...")
+                except Exception as e:
+                    print(f"🔍 Error in direct retrieval: {e}")
+                
                 # Run the retrieval QA chain
                 result = await asyncio.to_thread(
                     self.retrieval_qa,
                     {
                         "question": message,
-                        "chat_history": memory.buffer
+                        "chat_history": memory.chat_memory.messages
                     }
                 )
                 
@@ -327,6 +376,9 @@ Answer:""")
                         }
                         for doc in result["source_documents"]
                     ]
+                    print(f"🔍 Retrieved {len(retrieved_chunks)} chunks from chain")
+                else:
+                    print("🔍 No source_documents in result")
                 
                 # Update memory
                 memory.save_context(

@@ -1,6 +1,6 @@
-# Document Embedding Platform
+# Document Embedding & AI Chat Platform
 
-A modular, full-stack document processing and embedding platform built with FastAPI and React. Upload documents, process them with selectable embedding models, store vectors in configurable vector databases, and perform semantic search across your document collection.
+A modular, full-stack document processing and AI chat platform built with FastAPI and React. Upload documents, process them with selectable embedding models, store vectors in configurable vector databases, and interact with an intelligent chatbot that can answer questions about your documents using RAG (Retrieval-Augmented Generation).
 
 ![Platform Architecture](docs/images/architecture.png)
 
@@ -9,15 +9,23 @@ A modular, full-stack document processing and embedding platform built with Fast
 ### 🔧 Modular Architecture
 - **Pluggable Embedders**: Support for OpenAI and HuggingFace embedding models
 - **Multiple Vector Databases**: Pinecone, ChromaDB, and Qdrant support
+- **Multiple Chat Models**: OpenAI GPT, Google Gemini, and Local LLMs (Ollama/Transformers)
 - **Document Processors**: LangChain-based processors for PDF, DOCX, TXT, HTML, and Markdown
 
 ### 🚀 Full-Stack Application
 - **FastAPI Backend**: High-performance async API with automatic documentation
 - **React Frontend**: Modern, responsive UI with TypeScript and Tailwind CSS
-- **Real-time Updates**: Live document processing status and search results
+- **Real-time Updates**: Live document processing status and streaming chat responses
+
+### 🤖 AI Chat Assistant
+- **Document-Aware Conversations**: Ask questions about your uploaded documents
+- **RAG (Retrieval-Augmented Generation)**: Combines document retrieval with LLM generation
+- **Session Management**: Persistent chat history with conversation context
+- **Streaming Responses**: Real-time chat responses with typing indicators
+- **Multiple LLM Support**: OpenAI GPT, Google Gemini, Local models (Ollama/Transformers)
 
 ### 📄 Document Processing
-- **Multi-format Support**: PDF, DOCX, TXT, HTML, Markdown
+- **Multi-format Support**: PDF, DOCX, TXT, HTML, Markdown, PPTX (PowerPoint), XLSX/XLS (Excel)
 - **Intelligent Chunking**: Configurable text splitting with overlap
 - **Batch Processing**: Async document processing with status tracking
 
@@ -34,16 +42,18 @@ A modular, full-stack document processing and embedding platform built with Fast
 │                 │────│                 │────│                 │
 │ • Configuration │    │ • Document API  │    │ • Pinecone      │
 │ • Upload UI     │    │ • Search API    │    │ • ChromaDB      │
-│ • Search UI     │    │ • Config API    │    │ • Qdrant        │
+│ • Chat Interface│    │ • Chat API      │    │ • Qdrant        │
+│ • Search UI     │    │ • Config API    │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                               │
-                       ┌─────────────────┐
-                       │   Core Modules  │
-                       │                 │
-                       │ • DocumentProc  │
-                       │ • Embedders     │
-                       │ • VectorDBs     │
-                       └─────────────────┘
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │   Core Modules  │    │   Chat Models   │
+                       │                 │    │                 │
+                       │ • DocumentProc  │    │ • OpenAI GPT    │
+                       │ • Embedders     │    │ • Google Gemini │
+                       │ • VectorDBs     │    │ • Local LLMs    │
+                       │ • RAG Pipeline  │    │ • Session Mgmt  │
+                       └─────────────────┘    └─────────────────┘
 ```
 
 ## 🚀 Quick Start
@@ -153,7 +163,12 @@ npm start
     "api_key": "sk-...",
     "model_name": "text-embedding-ada-002",
     "organization": "org-...",  # Optional
-    "timeout": 30
+    "timeout": 30,
+    "batch_size": 100,
+    "max_retries": 3,
+    "dimensions": 1536,  # Optional - for newer models
+    "strip_new_lines": true,
+    "skip_empty": true
   }
 }
 ```
@@ -166,7 +181,13 @@ npm start
     "model_name": "sentence-transformers/all-MiniLM-L6-v2",
     "device": "cpu",  # or "cuda", "mps"
     "trust_remote_code": false,
-    "cache_dir": "/path/to/cache"  # Optional
+    "cache_dir": "/path/to/cache",  # Optional
+    "batch_size": 32,
+    "max_seq_length": 512,  # Optional - auto-detected
+    "normalize_embeddings": false,
+    "show_progress_bar": false,
+    "convert_to_numpy": true,
+    "convert_to_tensor": false
   }
 }
 ```
@@ -267,7 +288,79 @@ POST /config/vector-db
     "index_name": "documents"
   }
 }
+
+# Configure chat model
+POST /config/chat-model
+{
+  "type": "openai",
+  "openai": {
+    "api_key": "sk-...",
+    "model": "gpt-3.5-turbo",
+    "temperature": 0.7,
+    "max_tokens": 1000
+  }
+}
+
+# Chat with AI assistant
+POST /chat/
+{
+  "message": "What are the main points in the uploaded documents?",
+  "session_id": "optional-session-id",
+  "use_rag": true,
+  "stream": false
+}
+
+# List chat sessions
+GET /chat/sessions
+
+# Get session history
+GET /chat/sessions/{session_id}
+
+# Delete chat session
+DELETE /chat/sessions/{session_id}
+
+# Check chat service health
+GET /chat/health
 ```
+
+## 🤖 AI Chat Features
+
+### Document-Aware Conversations
+The platform includes a sophisticated AI chat system that can answer questions about your uploaded documents using Retrieval-Augmented Generation (RAG). Here's how it works:
+
+1. **Document Context**: When you ask a question, the system searches through your documents to find relevant content
+2. **Intelligent Responses**: The AI uses both the retrieved context and its training to provide accurate, source-aware answers
+3. **Session Memory**: Each chat session maintains conversation history for better context understanding
+4. **Multiple LLM Support**: Choose between OpenAI GPT, Google Gemini, or local models
+
+### Key Chat Features
+
+- **📄 RAG (Retrieval-Augmented Generation)**: Answers are grounded in your actual documents
+- **💬 Session Management**: Persistent conversation history with smart context handling
+- **⚡ Streaming Responses**: Real-time token-by-token response generation
+- **🔧 Configurable Parameters**: Adjust temperature, max tokens, and retrieval settings
+- **📊 Usage Tracking**: Monitor token usage and response times
+- **🔍 Source Attribution**: See which document chunks were used to generate answers
+
+### Supported Chat Models
+
+| Provider | Models | Features |
+|----------|--------|----------|
+| **OpenAI** | GPT-3.5 Turbo, GPT-4, GPT-4 Turbo | High quality, reliable, API-based |
+| **Google Gemini** | Gemini Pro, Gemini Pro Vision | Fast, cost-effective, API-based |
+| **Local Models** | Llama 2, Mistral, CodeLlama, etc. | Privacy-focused, runs locally via Ollama or Transformers |
+
+### Chat Configuration Options
+
+#### RAG Settings
+- **Top K**: Number of document chunks to retrieve (default: 5)
+- **Similarity Threshold**: Minimum similarity score for retrieval (default: 0.7)
+- **Max Context Length**: Maximum tokens for context window (default: 4000)
+
+#### Session Settings
+- **Storage Type**: In-memory or file-based session storage
+- **Session Lifetime**: Automatic cleanup of old sessions (default: 30 days)
+- **Context Management**: Smart conversation history truncation
 
 ## 🧪 Development
 
