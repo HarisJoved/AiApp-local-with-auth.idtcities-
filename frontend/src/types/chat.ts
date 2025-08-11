@@ -12,6 +12,7 @@ export interface ChatRequest {
   message: string;
   session_id?: string;
   user_id?: string;
+  topic_id?: string;
   use_rag?: boolean;
   stream?: boolean;
   temperature?: number;
@@ -64,6 +65,34 @@ export interface SessionHistoryResponse {
   title: string;
   created_at: string;
   last_activity: string;
+}
+
+export interface TopicInfo {
+  topic_id: string;
+  title: string;
+  created_at: string;
+  session_count: number;
+}
+
+export interface TopicListResponse {
+  topics: TopicInfo[];
+  total: number;
+}
+
+export interface TopicCreateRequest {
+  user_id: string;
+  title?: string;
+}
+
+export interface MessageRecord {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+}
+
+export interface SessionMessagesResponse {
+  session_id: string;
+  messages: MessageRecord[];
 }
 
 // Chat model configuration types

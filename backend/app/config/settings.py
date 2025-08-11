@@ -44,6 +44,16 @@ class Settings(BaseSettings):
     
     # Config file path for runtime configuration
     config_file_path: str = Field(default="config/app_config.json", env="CONFIG_FILE_PATH")
+
+    # MongoDB settings (chat/user store)
+    mongo_uri: str = Field(default="mongodb://localhost:27017", env="MONGO_URI")
+    mongo_db_name: str = Field(default="embedder_chat", env="MONGO_DB_NAME")
+    chat_history_limit: int = Field(default=10, env="CHAT_HISTORY_LIMIT")
+
+    # Auth/JWT
+    jwt_secret_key: str = Field(default="change_me", env="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
+    access_token_expires_minutes: int = Field(default=60 * 24, env="ACCESS_TOKEN_EXPIRES_MINUTES")
     
     class Config:
         env_file = ".env"

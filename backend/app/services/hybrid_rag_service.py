@@ -122,6 +122,8 @@ class HybridRAGService:
             return await self.active_service.chat(message, session_id, user_id, use_rag, **kwargs)
         else:
             # Custom service returns RAGResult, need to adapt
+            # Remove langchain-only kwargs to avoid unexpected-kwargs errors
+            kwargs.pop("chat_history_override", None)
             result = await self.active_service.chat(message, session_id, user_id, use_rag, **kwargs)
             
             # Convert RAGResult to ChatResult format for compatibility
@@ -143,6 +145,8 @@ class HybridRAGService:
         if not self.active_service:
             raise ValueError("No active RAG service available")
         
+        if self.service_type != "langchain":
+            kwargs.pop("chat_history_override", None)
         async for chunk in self.active_service.stream_chat(message, session_id, user_id, use_rag, **kwargs):
             yield chunk
     

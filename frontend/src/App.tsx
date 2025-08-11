@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { Settings, Upload, Search, FileText, Activity, MessageSquare } from 'lucide-react';
 
 // Components
@@ -11,6 +11,8 @@ import DocumentUploader from './components/upload/DocumentUploader';
 import DocumentList from './components/results/DocumentList';
 import SearchInterface from './components/results/SearchInterface';
 import ChatInterface from './components/chat/ChatInterface';
+import LoginPage from './components/auth/LoginPage';
+import SignupPage from './components/auth/SignupPage';
 
 // Services
 import { configAPI, generalAPI } from './services/api';
@@ -19,6 +21,7 @@ import { AppConfig, HealthStatus, DocumentUploadResponse } from './types/api';
 // Layout Components
 const Sidebar: React.FC = () => {
   const location = useLocation();
+  const authed = typeof window !== 'undefined' ? !!localStorage.getItem('auth_token') : false;
   
   const isActive = (path: string) => location.pathname === path;
   
@@ -37,7 +40,7 @@ const Sidebar: React.FC = () => {
       </div>
       
       <nav className="px-4 space-y-1">
-        <Link to="/" className={linkClass('/')}>
+        <Link to="/" className={linkClass('/')}> 
           <Upload className="w-4 h-4" />
           <span>Upload & Process</span>
         </Link>
@@ -66,6 +69,31 @@ const Sidebar: React.FC = () => {
           <Activity className="w-4 h-4" />
           <span>System Health</span>
         </Link>
+
+        <div className="pt-4 border-t mt-4">
+          {!authed ? (
+            <>
+              <Link to="/login" className={linkClass('/login')}>
+                <span>Login</span>
+              </Link>
+              <Link to="/signup" className={linkClass('/signup')}>
+                <span>Sign Up</span>
+              </Link>
+            </>
+          ) : (
+            <button
+              onClick={() => {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('user_id');
+                localStorage.removeItem('username');
+                window.location.href = '/login';
+              }}
+              className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+            >
+              Logout
+            </button>
+          )}
+        </div>
       </nav>
     </div>
   );
@@ -119,6 +147,14 @@ const ChatPage: React.FC = () => (
     </ErrorBoundary>
   </div>
 );
+
+const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+};
 
 const ConfigPage: React.FC<{ onConfigUpdate: () => void }> = ({ onConfigUpdate }) => {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -341,12 +377,14 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-7xl mx-auto px-6 py-8">
             <Routes>
-              <Route path="/" element={<UploadPage onUpload={handleUpload} />} />
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/search" element={<SearchPage />} />
-              <Route path="/documents" element={<DocumentsPage refreshTrigger={refreshTrigger} />} />
-              <Route path="/config" element={<ConfigPage onConfigUpdate={handleConfigUpdate} />} />
-              <Route path="/health" element={<HealthPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
+              <Route path="/" element={<ProtectedRoute><UploadPage onUpload={handleUpload} /></ProtectedRoute>} />
+              <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+              <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
+              <Route path="/documents" element={<ProtectedRoute><DocumentsPage refreshTrigger={refreshTrigger} /></ProtectedRoute>} />
+              <Route path="/config" element={<ProtectedRoute><ConfigPage onConfigUpdate={handleConfigUpdate} /></ProtectedRoute>} />
+              <Route path="/health" element={<ProtectedRoute><HealthPage /></ProtectedRoute>} />
             </Routes>
           </div>
         </main>

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from app.config.settings import settings, config_manager
 from app.services.factory import service_factory
 from app.services.document_service import document_service
-from app.routers import upload, config, chat
+from app.routers import upload, config, chat, auth
 
 
 @asynccontextmanager
@@ -64,6 +64,7 @@ app.add_middleware(
 app.include_router(upload.router)
 app.include_router(config.router)
 app.include_router(chat.router)
+app.include_router(auth.router)
 
 
 @app.get("/")

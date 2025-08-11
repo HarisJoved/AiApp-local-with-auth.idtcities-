@@ -18,6 +18,25 @@ const api = axios.create({
   timeout: 30000,
 });
 
+// Attach token if available and keep it in sync
+const savedToken = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+if (savedToken) {
+  api.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
+}
+api.interceptors.request.use((config) => {
+  try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    if (token) {
+      (config.headers as any)['Authorization'] = `Bearer ${token}`;
+    } else {
+      if ((config.headers as any)['Authorization']) {
+        delete (config.headers as any)['Authorization'];
+      }
+    }
+  } catch {}
+  return config;
+});
+
 // Upload API
 export const uploadAPI = {
   uploadDocument: async (file: File): Promise<DocumentUploadResponse> => {

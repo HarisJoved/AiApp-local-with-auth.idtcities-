@@ -10,7 +10,10 @@ import {
   SessionListResponse,
   SessionCreateRequest,
   SessionHistoryResponse,
-  ChatModelConfig
+  ChatModelConfig,
+  TopicListResponse,
+  TopicInfo,
+  TopicCreateRequest
 } from '../types/chat';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -22,7 +25,28 @@ const chatApi = axios.create({
   },
 });
 
+// Attach token to axios if present
+const saved = localStorage.getItem('auth_token');
+if (saved) {
+  chatApi.defaults.headers.common['Authorization'] = `Bearer ${saved}`;
+}
+
 export const chatService = {
+  async signup(username: string, password: string): Promise<{ user_id: string; username: string }> {
+    const response = await chatApi.post('/auth/signup', { username, password });
+    return response.data;
+  },
+  async login(username: string, password: string): Promise<{ access_token: string; token_type: string; user_id: string; username: string }> {
+    const response = await chatApi.post('/auth/login', { username, password });
+    const token = response.data?.access_token;
+    if (token) {
+      chatApi.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      localStorage.setItem('auth_token', token);
+      localStorage.setItem('user_id', response.data.user_id);
+      localStorage.setItem('username', response.data.username);
+    }
+    return response.data;
+  },
   /**
    * Send a chat message
    */
@@ -42,10 +66,12 @@ export const chatService = {
   ): Promise<void> {
     try {
       const streamRequest = { ...request, stream: true };
+      const token = localStorage.getItem('auth_token');
       const response = await fetch(`${API_BASE_URL}/chat/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(streamRequest),
       });
@@ -107,6 +133,29 @@ export const chatService = {
   async listSessions(userId?: string): Promise<SessionListResponse> {
     const params = userId ? { user_id: userId } : {};
     const response = await chatApi.get('/chat/sessions', { params });
+    return response.data;
+  },
+
+  /**
+   * Topics (Neo4j)
+   */
+  async listTopics(userId: string): Promise<TopicListResponse> {
+    const response = await chatApi.get('/chat/topics', { params: { user_id: userId } });
+    return response.data;
+  },
+
+  async createTopic(data: TopicCreateRequest): Promise<TopicInfo> {
+    const response = await chatApi.post('/chat/topics', data);
+    return response.data;
+  },
+
+  async listSessionsUnderTopic(topicId: string, userId: string) {
+    const response = await chatApi.get(`/chat/topics/${topicId}/sessions`, { params: { user_id: userId } });
+    return response.data;
+  },
+
+  async createSessionUnderTopic(topicId: string, data: { user_id: string; title?: string }) {
+    const response = await chatApi.post(`/chat/topics/${topicId}/sessions`, data);
     return response.data;
   },
 

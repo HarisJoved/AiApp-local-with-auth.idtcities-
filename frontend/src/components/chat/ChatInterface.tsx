@@ -18,6 +18,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string>(() => {
+    const authed = localStorage.getItem('user_id');
+    if (authed) return authed;
+    const existing = localStorage.getItem('demo_user_id');
+    if (existing) return existing;
+    const generated = 'user-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem('demo_user_id', generated);
+    return generated;
+  });
+  const [topicId] = useState<string | undefined>(undefined); // let backend auto-create default
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
@@ -72,7 +82,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
 
   const loadSessions = async () => {
     try {
-      const response = await chatService.listSessions();
+      const response = await chatService.listSessions(userId);
       setSessions(response.sessions);
     } catch (error) {
       console.error('Failed to load sessions:', error);
@@ -81,7 +91,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
 
   const createNewSession = async () => {
     try {
-      const session = await chatService.createSession({});
+      const session = await chatService.createSession({ user_id: userId });
       setCurrentSessionId(session.session_id);
       setMessages([]);
       await loadSessions();
@@ -143,10 +153,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
         };
         setMessages(prev => [...prev, assistantMessage]);
 
+        // Ensure we have a session_id for streaming so history threads correctly
+        let sessionIdToUse = currentSessionId;
+        if (!sessionIdToUse) {
+          try {
+            const newSession = await chatService.createSession({ user_id: userId });
+            sessionIdToUse = newSession.session_id;
+            setCurrentSessionId(sessionIdToUse);
+            } catch (e) {
+            setIsStreaming(false);
+            setError('Failed to create session');
+            // remove placeholder assistant message
+            setMessages(prev => prev.slice(0, -1));
+            return;
+          }
+        }
+
         await chatService.streamMessage(
           {
             message: content.trim(),
-            session_id: currentSessionId || undefined,
+            session_id: sessionIdToUse,
+            user_id: userId,
+            topic_id: topicId,
             use_rag: options.useRAG,
             stream: true,
             temperature: options.temperature,
@@ -186,6 +214,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
         const response: ChatResponse = await chatService.sendMessage({
           message: content.trim(),
           session_id: currentSessionId || undefined,
+          user_id: userId,
+          topic_id: topicId,
           use_rag: options.useRAG,
           temperature: options.temperature,
           max_tokens: options.maxTokens,
@@ -355,7 +385,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
                     <div>Vector DB: {serviceHealth.vector_db || 'Not configured'}</div>
                   </div>
                 )}
-              </div>
+                    </div>
             ) : (
               <div className="space-y-6">
                 {messages.map((message, index) => (
@@ -366,10 +396,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
                   />
                 ))}
                 <div ref={messagesEndRef} />
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
         {/* Error display */}
         {error && (

@@ -289,6 +289,7 @@ Answer:""")
         session_id: str,
         user_id: Optional[str] = None,
         use_rag: bool = True,
+        chat_history_override: Optional[List[BaseMessage]] = None,
         **kwargs
     ) -> ChatResult:
         """
@@ -352,12 +353,14 @@ Answer:""")
                 except Exception as e:
                     print(f"🔍 Error in direct retrieval: {e}")
                 
+                # Determine chat history source
+                chat_history = chat_history_override if chat_history_override is not None else memory.chat_memory.messages
                 # Run the retrieval QA chain
                 result = await asyncio.to_thread(
                     self.retrieval_qa,
                     {
                         "question": message,
-                        "chat_history": memory.chat_memory.messages
+                        "chat_history": chat_history,
                     }
                 )
                 
@@ -438,6 +441,7 @@ Answer:""")
         session_id: str,
         user_id: Optional[str] = None,
         use_rag: bool = True,
+        chat_history_override: Optional[List[BaseMessage]] = None,
         **kwargs
     ):
         """
@@ -474,7 +478,7 @@ Answer:""")
                     return self.retrieval_qa(
                         {
                             "question": message,
-                            "chat_history": memory.buffer
+                            "chat_history": chat_history_override if chat_history_override is not None else memory.buffer,
                         },
                         callbacks=[streaming_handler]
                     )
