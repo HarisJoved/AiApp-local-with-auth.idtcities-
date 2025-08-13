@@ -135,3 +135,32 @@ export interface ChatModelConfig {
   gemini?: GeminiChatConfig;
   local?: LocalChatConfig;
 }
+
+// RAG Prompt Types
+export interface RAGPromptInfo {
+  prompt_id: string;
+  name: string;
+  content: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface RAGPromptListResponse {
+  prompts: RAGPromptInfo[];
+}
+
+export interface RAGPromptCreate {
+  name: string;
+  content: string;
+  set_active?: boolean;
+}
+
+export interface RAGPromptUpdate {
+  name?: string;
+  content?: string;
+}
+
+export interface RAGPromptActiveResponse {
+  prompt?: RAGPromptInfo | null;
+}

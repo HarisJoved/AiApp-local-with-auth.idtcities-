@@ -7,6 +7,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import EmbedderConfig from './components/config/EmbedderConfig';
 import VectorDBConfig from './components/config/VectorDBConfig';
 import ChatModelConfig from './components/config/ChatModelConfig';
+import PromptManager from './components/config/PromptManager';
 import DocumentUploader from './components/upload/DocumentUploader';
 import DocumentList from './components/results/DocumentList';
 import SearchInterface from './components/results/SearchInterface';
@@ -159,7 +160,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }
 const ConfigPage: React.FC<{ onConfigUpdate: () => void }> = ({ onConfigUpdate }) => {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'embedder' | 'vectordb' | 'chat'>('embedder');
+  const [activeTab, setActiveTab] = useState<'embedder' | 'vectordb' | 'chat' | 'prompts'>('embedder');
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -193,6 +194,7 @@ const ConfigPage: React.FC<{ onConfigUpdate: () => void }> = ({ onConfigUpdate }
     { id: 'embedder', label: 'Embedder', icon: Upload },
     { id: 'vectordb', label: 'Vector Database', icon: FileText },
     { id: 'chat', label: 'Chat Model', icon: MessageSquare },
+    { id: 'prompts', label: 'RAG Prompts', icon: Settings },
   ] as const;
 
   return (
@@ -244,6 +246,10 @@ const ConfigPage: React.FC<{ onConfigUpdate: () => void }> = ({ onConfigUpdate }
         
         {activeTab === 'chat' && (
           <ChatModelConfig onConfigUpdate={handleConfigUpdate} />
+        )}
+
+        {activeTab === 'prompts' && (
+          <PromptManager />
         )}
       </div>
     </div>

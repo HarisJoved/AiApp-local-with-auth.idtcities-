@@ -17,6 +17,11 @@ from app.models.chat import (
     ConversationCreateRequest,
     ConversationHistoryResponse,
     ChatMessageRequest,
+    RAGPromptCreate,
+    RAGPromptUpdate,
+    RAGPromptInfo,
+    RAGPromptListResponse,
+    RAGPromptActiveResponse,
 )
 from app.models.config import ChatModelConfig
 from app.services.hybrid_rag_service import HybridRAGService
@@ -155,10 +160,15 @@ async def chat(
             if not conversation_id:
                 conversation_id = await store.create_conversation(user_id="anonymous", title="New Chat", token_limit=request.token_limit or 128_000)
         
-        # Prepare chat history from summaries + recent messages
+        # Prepare chat history from summaries + recent messages and optional user-defined prompt
         prior_messages: Optional[List[Any]] = []
         try:
             from langchain.schema import HumanMessage, AIMessage, SystemMessage
+            # Inject active user RAG prompt if available
+            if request.user_id:
+                active_prompt = await store.get_active_rag_prompt(request.user_id)
+                if active_prompt and active_prompt.get("content"):
+                    prior_messages.append(SystemMessage(content=str(active_prompt.get("content"))))
             summaries = await store.list_summaries(conversation_id)
             for s in summaries:
                 layer = s.get("layer", 1)
@@ -243,11 +253,15 @@ async def stream_chat_response(rag_service: HybridRAGService, request: ChatReque
                 conversation_id = await store.create_conversation(user_id="anonymous", title="New Chat", token_limit=request.token_limit or 128_000)
         
         # Stream the response with Hybrid RAG service
-        # Prepare prior history (summaries + recent)
+        # Prepare prior history (user prompt + summaries + recent)
         prior_messages = None
         try:
             from langchain.schema import HumanMessage, AIMessage, SystemMessage
             prior_messages = []
+            if request.user_id:
+                active_prompt = await store.get_active_rag_prompt(request.user_id)
+                if active_prompt and active_prompt.get("content"):
+                    prior_messages.append(SystemMessage(content=str(active_prompt.get("content"))))
             summaries = await store.list_summaries(conversation_id)
             for s in summaries:
                 prior_messages.append(SystemMessage(content=f"Conversation summary (layer {s.get('layer', 1)}): {s.get('summary_text', '')}"))
@@ -477,3 +491,88 @@ async def debug_chat_service():
         
     except Exception as e:
         return {"error": str(e)}
+
+
+# ---------- RAG Prompt Management Endpoints ----------
+
+@router.get("/prompts", response_model=RAGPromptListResponse)
+async def list_prompts(current_user: dict = Depends(get_current_user)):
+    store = get_mongo_store()
+    prompts = await store.list_rag_prompts(current_user.get("user_id"))
+    items = [
+        RAGPromptInfo(
+            prompt_id=p.get("prompt_id"),
+            name=p.get("name", "Unnamed"),
+            content=p.get("content", ""),
+            is_active=bool(p.get("is_active", False)),
+            created_at=p.get("created_at", datetime.utcnow().isoformat()),
+            updated_at=p.get("updated_at"),
+        )
+        for p in prompts
+    ]
+    return RAGPromptListResponse(prompts=items)
+
+
+@router.post("/prompts", response_model=RAGPromptInfo)
+async def create_prompt(request: RAGPromptCreate, current_user: dict = Depends(get_current_user)):
+    store = get_mongo_store()
+    res = await store.create_rag_prompt(current_user.get("user_id"), request.name, request.content, set_active=request.set_active)
+    saved = await store.db.rag_prompts.find_one({"prompt_id": res["prompt_id"]}, {"_id": 0})
+    return RAGPromptInfo(
+        prompt_id=saved.get("prompt_id"),
+        name=saved.get("name"),
+        content=saved.get("content"),
+        is_active=bool(saved.get("is_active", False)),
+        created_at=saved.get("created_at"),
+        updated_at=saved.get("updated_at"),
+    )
+
+
+@router.get("/prompts/active", response_model=RAGPromptActiveResponse)
+async def get_active_prompt(current_user: dict = Depends(get_current_user)):
+    store = get_mongo_store()
+    p = await store.get_active_rag_prompt(current_user.get("user_id"))
+    if not p:
+        return RAGPromptActiveResponse(prompt=None)
+    return RAGPromptActiveResponse(prompt=RAGPromptInfo(
+        prompt_id=p.get("prompt_id"),
+        name=p.get("name"),
+        content=p.get("content"),
+        is_active=bool(p.get("is_active", False)),
+        created_at=p.get("created_at"),
+        updated_at=p.get("updated_at"),
+    ))
+
+
+@router.post("/prompts/{prompt_id}/activate")
+async def activate_prompt(prompt_id: str, current_user: dict = Depends(get_current_user)):
+    store = get_mongo_store()
+    await store.set_active_rag_prompt(current_user.get("user_id"), prompt_id)
+    return {"message": "Prompt set as active"}
+
+
+@router.patch("/prompts/{prompt_id}", response_model=RAGPromptInfo)
+async def update_prompt(prompt_id: str, request: RAGPromptUpdate, current_user: dict = Depends(get_current_user)):
+    store = get_mongo_store()
+    await store.update_rag_prompt(current_user.get("user_id"), prompt_id, request.model_dump(exclude_unset=True))
+    saved = await store.db.rag_prompts.find_one({"prompt_id": prompt_id}, {"_id": 0})
+    if not saved or saved.get("user_id") != current_user.get("user_id"):
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    return RAGPromptInfo(
+        prompt_id=saved.get("prompt_id"),
+        name=saved.get("name"),
+        content=saved.get("content"),
+        is_active=bool(saved.get("is_active", False)),
+        created_at=saved.get("created_at"),
+        updated_at=saved.get("updated_at"),
+    )
+
+
+@router.delete("/prompts/{prompt_id}")
+async def delete_prompt(prompt_id: str, current_user: dict = Depends(get_current_user)):
+    store = get_mongo_store()
+    saved = await store.db.rag_prompts.find_one({"prompt_id": prompt_id}, {"user_id": 1, "_id": 0})
+    if not saved or saved.get("user_id") != current_user.get("user_id"):
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    await store.delete_rag_prompt(current_user.get("user_id"), prompt_id)
+    return {"message": "Prompt deleted"}

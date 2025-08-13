@@ -1,4 +1,5 @@
 import uuid
+import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
@@ -332,6 +333,45 @@ class MongoChatStore:
                     {"conversation_id": conversation_id},
                     {"$inc": {"token_count_total": -int(reduce)}}
                 )
+
+    # ---------- RAG Prompt Management ----------
+    async def create_rag_prompt(self, user_id: str, name: str, content: str, set_active: bool = False) -> Dict[str, Any]:
+        pid = str(uuid.uuid4())
+        now = datetime.utcnow().isoformat()
+        doc = {
+            "prompt_id": pid,
+            "user_id": user_id,
+            "name": name,
+            "content": content,
+            "is_active": bool(set_active),
+            "created_at": now,
+            "updated_at": None,
+        }
+        if set_active:
+            await self.db.rag_prompts.update_many({"user_id": user_id}, {"$set": {"is_active": False}})
+        await self.db.rag_prompts.insert_one(doc)
+        return {"prompt_id": pid}
+
+    async def list_rag_prompts(self, user_id: str) -> List[Dict[str, Any]]:
+        cursor = self.db.rag_prompts.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1)
+        return [doc async for doc in cursor]
+
+    async def get_active_rag_prompt(self, user_id: str) -> Optional[Dict[str, Any]]:
+        return await self.db.rag_prompts.find_one({"user_id": user_id, "is_active": True}, {"_id": 0})
+
+    async def set_active_rag_prompt(self, user_id: str, prompt_id: str) -> None:
+        await self.db.rag_prompts.update_many({"user_id": user_id}, {"$set": {"is_active": False}})
+        await self.db.rag_prompts.update_one({"user_id": user_id, "prompt_id": prompt_id}, {"$set": {"is_active": True}})
+
+    async def update_rag_prompt(self, user_id: str, prompt_id: str, updates: Dict[str, Any]) -> None:
+        updates = {k: v for k, v in updates.items() if v is not None}
+        if not updates:
+            return
+        updates["updated_at"] = datetime.utcnow().isoformat()
+        await self.db.rag_prompts.update_one({"user_id": user_id, "prompt_id": prompt_id}, {"$set": updates})
+
+    async def delete_rag_prompt(self, user_id: str, prompt_id: str) -> None:
+        await self.db.rag_prompts.delete_one({"user_id": user_id, "prompt_id": prompt_id})
 
 
 # Global accessor

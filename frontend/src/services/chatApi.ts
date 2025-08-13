@@ -11,6 +11,11 @@ import {
   ConversationCreateRequest,
   ConversationHistoryResponse,
   ChatModelConfig,
+  RAGPromptInfo,
+  RAGPromptListResponse,
+  RAGPromptCreate,
+  RAGPromptUpdate,
+  RAGPromptActiveResponse,
 } from '../types/chat';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -164,6 +169,32 @@ export const chatService = {
     vector_db?: string;
   }> {
     const response = await chatApi.get('/chat/health');
+    return response.data;
+  },
+
+  // RAG Prompts
+  async listPrompts(): Promise<RAGPromptListResponse> {
+    const response = await chatApi.get('/chat/prompts');
+    return response.data;
+  },
+  async createPrompt(data: RAGPromptCreate): Promise<RAGPromptInfo> {
+    const response = await chatApi.post('/chat/prompts', data);
+    return response.data;
+  },
+  async updatePrompt(promptId: string, data: RAGPromptUpdate): Promise<RAGPromptInfo> {
+    const response = await chatApi.patch(`/chat/prompts/${promptId}`, data);
+    return response.data;
+  },
+  async deletePrompt(promptId: string): Promise<{ message: string }> {
+    const response = await chatApi.delete(`/chat/prompts/${promptId}`);
+    return response.data;
+  },
+  async activatePrompt(promptId: string): Promise<{ message: string }> {
+    const response = await chatApi.post(`/chat/prompts/${promptId}/activate`);
+    return response.data;
+  },
+  async getActivePrompt(): Promise<RAGPromptActiveResponse> {
+    const response = await chatApi.get('/chat/prompts/active');
     return response.data;
   },
 
