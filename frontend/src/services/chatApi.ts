@@ -6,14 +6,11 @@ import axios from 'axios';
 import {
   ChatRequest,
   ChatResponse,
-  SessionInfo,
-  SessionListResponse,
-  SessionCreateRequest,
-  SessionHistoryResponse,
+  ConversationInfo,
+  ConversationListResponse,
+  ConversationCreateRequest,
+  ConversationHistoryResponse,
   ChatModelConfig,
-  TopicListResponse,
-  TopicInfo,
-  TopicCreateRequest
 } from '../types/chat';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -122,56 +119,38 @@ export const chatService = {
   /**
    * Create a new chat session
    */
-  async createSession(request: SessionCreateRequest): Promise<SessionInfo> {
-    const response = await chatApi.post('/chat/sessions', request);
+  async createConversation(request: ConversationCreateRequest): Promise<ConversationInfo> {
+    const response = await chatApi.post('/chat/conversations', request);
     return response.data;
   },
 
   /**
    * List chat sessions
    */
-  async listSessions(userId?: string): Promise<SessionListResponse> {
+  async listConversations(userId?: string): Promise<ConversationListResponse> {
     const params = userId ? { user_id: userId } : {};
-    const response = await chatApi.get('/chat/sessions', { params });
+    const response = await chatApi.get('/chat/conversations', { params });
     return response.data;
   },
 
   /**
    * Topics (Neo4j)
    */
-  async listTopics(userId: string): Promise<TopicListResponse> {
-    const response = await chatApi.get('/chat/topics', { params: { user_id: userId } });
-    return response.data;
-  },
-
-  async createTopic(data: TopicCreateRequest): Promise<TopicInfo> {
-    const response = await chatApi.post('/chat/topics', data);
-    return response.data;
-  },
-
-  async listSessionsUnderTopic(topicId: string, userId: string) {
-    const response = await chatApi.get(`/chat/topics/${topicId}/sessions`, { params: { user_id: userId } });
-    return response.data;
-  },
-
-  async createSessionUnderTopic(topicId: string, data: { user_id: string; title?: string }) {
-    const response = await chatApi.post(`/chat/topics/${topicId}/sessions`, data);
-    return response.data;
-  },
+  // Topic APIs removed in conversation-based model
 
   /**
    * Get session history
    */
-  async getSession(sessionId: string): Promise<SessionHistoryResponse> {
-    const response = await chatApi.get(`/chat/sessions/${sessionId}`);
+  async getConversation(conversationId: string): Promise<ConversationHistoryResponse> {
+    const response = await chatApi.get(`/chat/conversations/${conversationId}`);
     return response.data;
   },
 
   /**
    * Delete a session
    */
-  async deleteSession(sessionId: string): Promise<void> {
-    await chatApi.delete(`/chat/sessions/${sessionId}`);
+  async deleteConversation(conversationId: string): Promise<void> {
+    await chatApi.delete(`/chat/conversations/${conversationId}`);
   },
 
   /**

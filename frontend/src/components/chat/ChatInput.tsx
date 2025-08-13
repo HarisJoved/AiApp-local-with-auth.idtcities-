@@ -17,6 +17,8 @@ export interface ChatInputOptions {
   temperature?: number;
   maxTokens?: number;
   stream: boolean;
+  tokenLimit?: number;
+  summarizeTargetRatio?: number;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -32,6 +34,8 @@ const ChatInput: React.FC<ChatInputProps> = ({
     stream: false,
     temperature: 0.7,
     maxTokens: 1000,
+    tokenLimit: 1200,
+    summarizeTargetRatio: 0.8,
   });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -134,6 +138,40 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 step="50"
                 value={options.maxTokens}
                 onChange={(e) => setOptions({ ...options, maxTokens: parseInt(e.target.value) })}
+                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+              />
+            </div>
+
+            {/* Conversation Token Limit */}
+            <div>
+              <label htmlFor="tokenLimit" className="block text-sm text-gray-700 mb-1">
+                Conversation Token Limit
+              </label>
+              <input
+                type="number"
+                id="tokenLimit"
+                min="1000"
+                max="512000"
+                step="1000"
+                value={options.tokenLimit}
+                onChange={(e) => setOptions({ ...options, tokenLimit: parseInt(e.target.value) })}
+                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+              />
+            </div>
+
+            {/* Summarize Target Ratio */}
+            <div>
+              <label htmlFor="summarizeTargetRatio" className="block text-sm text-gray-700 mb-1">
+                Summarize Target Ratio
+              </label>
+              <input
+                type="number"
+                id="summarizeTargetRatio"
+                min="0.5"
+                max="0.95"
+                step="0.01"
+                value={options.summarizeTargetRatio}
+                onChange={(e) => setOptions({ ...options, summarizeTargetRatio: parseFloat(e.target.value) })}
                 className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
               />
             </div>

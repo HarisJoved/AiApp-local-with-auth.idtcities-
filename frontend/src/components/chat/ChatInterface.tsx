@@ -7,7 +7,7 @@ import { MessageSquare, Plus, History, AlertCircle, CheckCircle, Settings } from
 import ChatMessageComponent from './ChatMessage';
 import ChatInput, { ChatInputOptions } from './ChatInput';
 import SessionList from './SessionList';
-import { ChatMessage, SessionInfo, ChatResponse } from '../../types/chat';
+import { ChatMessage, ConversationInfo, ChatResponse } from '../../types/chat';
 import { chatService } from '../../services/chatApi';
 
 interface ChatInterfaceProps {
@@ -16,7 +16,7 @@ interface ChatInterfaceProps {
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [sessions, setSessions] = useState<ConversationInfo[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string>(() => {
     const authed = localStorage.getItem('user_id');
@@ -27,7 +27,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     localStorage.setItem('demo_user_id', generated);
     return generated;
   });
-  const [topicId] = useState<string | undefined>(undefined); // let backend auto-create default
+  // topicId removed in conversation model
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
@@ -82,8 +82,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
 
   const loadSessions = async () => {
     try {
-      const response = await chatService.listSessions(userId);
-      setSessions(response.sessions);
+      const response = await chatService.listConversations(userId);
+      setSessions(response.conversations);
     } catch (error) {
       console.error('Failed to load sessions:', error);
     }
@@ -91,8 +91,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
 
   const createNewSession = async () => {
     try {
-      const session = await chatService.createSession({ user_id: userId });
-      setCurrentSessionId(session.session_id);
+      const session = await chatService.createConversation({ user_id: userId });
+      setCurrentSessionId(session.conversation_id);
       setMessages([]);
       await loadSessions();
       setShowSessions(false);
@@ -104,7 +104,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
 
   const loadSession = async (sessionId: string) => {
     try {
-      const session = await chatService.getSession(sessionId);
+      const session = await chatService.getConversation(sessionId);
       setCurrentSessionId(sessionId);
       setMessages(session.messages);
       setShowSessions(false);
@@ -116,7 +116,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
 
   const deleteSession = async (sessionId: string) => {
     try {
-      await chatService.deleteSession(sessionId);
+      await chatService.deleteConversation(sessionId);
       await loadSessions();
       if (currentSessionId === sessionId) {
         setCurrentSessionId(null);
@@ -153,12 +153,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
         };
         setMessages(prev => [...prev, assistantMessage]);
 
-        // Ensure we have a session_id for streaming so history threads correctly
+        // Ensure we have a conversation_id for streaming so history threads correctly
         let sessionIdToUse = currentSessionId;
         if (!sessionIdToUse) {
           try {
-            const newSession = await chatService.createSession({ user_id: userId });
-            sessionIdToUse = newSession.session_id;
+            const newSession = await chatService.createConversation({ user_id: userId });
+            sessionIdToUse = newSession.conversation_id;
             setCurrentSessionId(sessionIdToUse);
             } catch (e) {
             setIsStreaming(false);
@@ -172,13 +172,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
         await chatService.streamMessage(
           {
             message: content.trim(),
-            session_id: sessionIdToUse,
+            conversation_id: sessionIdToUse,
             user_id: userId,
-            topic_id: topicId,
             use_rag: options.useRAG,
             stream: true,
             temperature: options.temperature,
             max_tokens: options.maxTokens,
+            token_limit: options.tokenLimit,
+            summarize_target_ratio: options.summarizeTargetRatio,
           },
           // On chunk received
           (chunk: string) => {
@@ -213,12 +214,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
 
         const response: ChatResponse = await chatService.sendMessage({
           message: content.trim(),
-          session_id: currentSessionId || undefined,
+          conversation_id: currentSessionId || undefined,
           user_id: userId,
-          topic_id: topicId,
           use_rag: options.useRAG,
           temperature: options.temperature,
           max_tokens: options.maxTokens,
+          token_limit: options.tokenLimit,
+          summarize_target_ratio: options.summarizeTargetRatio,
         });
 
       const assistantMessage: ChatMessage = {
@@ -230,8 +232,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
       setMessages(prev => [...prev, assistantMessage]);
 
         // Update current session ID if it was created
-        if (!currentSessionId && response.session_id) {
-          setCurrentSessionId(response.session_id);
+        if (!currentSessionId && response.conversation_id) {
+          setCurrentSessionId(response.conversation_id);
         }
 
         await loadSessions(); // Refresh sessions

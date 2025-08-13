@@ -10,13 +10,14 @@ export interface ChatMessage {
 
 export interface ChatRequest {
   message: string;
-  session_id?: string;
+  conversation_id?: string;
   user_id?: string;
-  topic_id?: string;
   use_rag?: boolean;
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;
+  token_limit?: number;
+  summarize_target_ratio?: number;
 }
 
 export interface RetrievedChunk {
@@ -27,7 +28,7 @@ export interface RetrievedChunk {
 
 export interface ChatResponse {
   message: string;
-  session_id: string;
+  conversation_id: string;
   model_info?: string;
   usage?: {
     prompt_tokens: number;
@@ -40,27 +41,29 @@ export interface ChatResponse {
   total_time: number;
 }
 
-export interface SessionInfo {
-  session_id: string;
+export interface ConversationInfo {
+  conversation_id: string;
   user_id?: string;
   title: string;
   created_at: string;
   last_activity: string;
   message_count: number;
+  token_count_total: number;
 }
 
-export interface SessionListResponse {
-  sessions: SessionInfo[];
+export interface ConversationListResponse {
+  conversations: ConversationInfo[];
   total: number;
 }
 
-export interface SessionCreateRequest {
+export interface ConversationCreateRequest {
   user_id?: string;
   title?: string;
+  token_limit?: number;
 }
 
-export interface SessionHistoryResponse {
-  session_id: string;
+export interface ConversationHistoryResponse {
+  conversation_id: string;
   messages: ChatMessage[];
   title: string;
   created_at: string;
@@ -90,10 +93,7 @@ export interface MessageRecord {
   timestamp: string;
 }
 
-export interface SessionMessagesResponse {
-  session_id: string;
-  messages: MessageRecord[];
-}
+// Deprecated: session-specific response is no longer used in conversation model
 
 // Chat model configuration types
 export type ChatModelType = 'openai' | 'gemini' | 'local';

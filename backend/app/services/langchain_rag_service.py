@@ -26,7 +26,7 @@ from app.core.session.session_manager import SessionManager, ChatSession
 class ChatResult(BaseModel):
     """Result of a chat interaction"""
     message: str
-    session_id: str
+    session_id: str  # used as memory key; now conversation_id is passed here
     model_info: Optional[str] = None
     usage: Optional[Dict[str, Any]] = None
     retrieved_chunks: List[Dict[str, Any]] = []

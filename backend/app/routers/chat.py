@@ -9,20 +9,14 @@ from fastapi.responses import StreamingResponse
 from datetime import datetime
 
 from app.models.chat import (
-    ChatRequest, 
-    ChatResponse, 
+    ChatRequest,
+    ChatResponse,
     RetrievedChunk,
-    SessionInfo, 
-    SessionListResponse, 
-    SessionCreateRequest,
-    SessionHistoryResponse,
+    ConversationInfo,
+    ConversationListResponse,
+    ConversationCreateRequest,
+    ConversationHistoryResponse,
     ChatMessageRequest,
-    TopicListResponse,
-    TopicInfo,
-    TopicCreateRequest,
-    SessionCreateUnderTopicRequest,
-    MessageRecord,
-    SessionMessagesResponse,
 )
 from app.models.config import ChatModelConfig
 from app.services.hybrid_rag_service import HybridRAGService
@@ -109,7 +103,7 @@ async def chat(
     Chat with the AI assistant
     
     - **message**: User's message/question
-    - **session_id**: Optional session ID (new session created if not provided)
+    - conversation_id: Optional conversation ID (new conversation created if not provided)
     - **user_id**: Optional user ID for session management
     - **use_rag**: Whether to use document retrieval (default: true)
     - **stream**: Whether to stream the response (default: false)
@@ -145,41 +139,44 @@ async def chat(
                 media_type="text/plain"
             )
         
-        # Ensure user/topic/session via MongoDB if user_id provided
-        session_id = request.session_id
+        # Ensure conversation via MongoDB
         store = get_mongo_store()
+        conversation_id = request.conversation_id
         if request.user_id:
-            topic_id = request.topic_id
-            if not topic_id:
+            if not conversation_id:
                 inferred = (request.message or "New Chat").strip().split("\n")[0][:60]
-                # Reuse last topic if exists, else create once
-                topic_id = await store.get_or_create_default_topic(request.user_id, inferred)
-            if not session_id:
-                session_id = await store.create_session(request.user_id, topic_id, title="New Chat")
+                conversation_id = await store.create_conversation(request.user_id, title=inferred, token_limit=request.token_limit or 128_000)
+            else:
+                convo = await store.get_conversation(conversation_id)
+                if not convo or convo.get("user_id") != request.user_id:
+                    raise HTTPException(status_code=403, detail="Forbidden")
         else:
-            # Fallback to in-memory/file session manager
-            if not session_id:
-                new_session = await rag_service.create_session(request.user_id)
-                session_id = new_session.session_id
+            # Anonymous: generate a temporary conversation
+            if not conversation_id:
+                conversation_id = await store.create_conversation(user_id="anonymous", title="New Chat", token_limit=request.token_limit or 128_000)
         
-        # Prepare previous chat history from MongoDB (if available)
-        prior_messages: Optional[List[Any]] = None
-        if request.user_id and session_id:
-            # Pull more history to ensure multi-turn sessions are preserved
-            history = await store.get_last_messages(session_id, limit=max(settings.chat_history_limit, 50))
-            # Convert to LangChain-compatible messages
-            from langchain.schema import HumanMessage, AIMessage
-            prior_messages = []
+        # Prepare chat history from summaries + recent messages
+        prior_messages: Optional[List[Any]] = []
+        try:
+            from langchain.schema import HumanMessage, AIMessage, SystemMessage
+            summaries = await store.list_summaries(conversation_id)
+            for s in summaries:
+                layer = s.get("layer", 1)
+                text = s.get("summary_text", "")
+                prior_messages.append(SystemMessage(content=f"Conversation summary (layer {layer}): {text}"))
+            history = await store.get_last_messages(conversation_id, limit=max(settings.chat_history_limit, 50))
             for m in history:
                 if m.get("role") == "user":
                     prior_messages.append(HumanMessage(content=m.get("content", "")))
                 elif m.get("role") == "assistant":
                     prior_messages.append(AIMessage(content=m.get("content", "")))
+        except Exception as _:
+            prior_messages = None
 
         # Process chat request with Hybrid RAG service, injecting history when available
         result = await rag_service.chat(
             message=request.message,
-            session_id=session_id,
+            session_id=conversation_id,  # use conversation id as memory key
             user_id=request.user_id,
             use_rag=request.use_rag,
             chat_history_override=prior_messages,
@@ -198,7 +195,7 @@ async def chat(
         
         response_obj = ChatResponse(
             message=result.message,
-            session_id=result.session_id,
+            conversation_id=conversation_id,
             model_info=result.model_info,
             usage=result.usage,
             retrieved_chunks=retrieved_chunks,
@@ -207,15 +204,19 @@ async def chat(
             total_time=result.total_time
         )
 
-        # Store messages as a pair in MongoDB
-        if request.user_id and session_id:
-            try:
-                await store.add_message_pair(session_id, user_content=request.message, assistant_content=result.message)
-                # Ensure the session has a meaningful title
-                inferred = (request.message or "New Chat").strip().split("\n")[0][:60]
-                await store.update_session_title_if_default(session_id, inferred)
-            except Exception as e:
-                print(f"⚠️ Failed to write messages to MongoDB: {e}")
+        # Store messages and run summarization if needed
+        try:
+            await store.add_message_pair(conversation_id, user_content=request.message, assistant_content=result.message)
+            inferred = (request.message or "New Chat").strip().split("\n")[0][:60]
+            await store.update_conversation_title_if_default(conversation_id, inferred)
+            await store.summarize_if_needed(
+                conversation_id,
+                token_limit=int(request.token_limit or 128_000),
+                target_ratio=float(request.summarize_target_ratio or 0.8),
+                chat_model=rag_service.chat_model,
+            )
+        except Exception as e:
+            print(f"⚠️ Conversation write/summarize failed: {e}")
 
         return response_obj
     
@@ -226,37 +227,42 @@ async def chat(
 async def stream_chat_response(rag_service: HybridRAGService, request: ChatRequest, kwargs: Dict[str, Any]):
     """Stream chat response"""
     try:
-        # Ensure user/topic/session via MongoDB if provided
-        session_id = request.session_id
+        # Ensure conversation via MongoDB
         store = get_mongo_store()
+        conversation_id = request.conversation_id
         if request.user_id:
-            topic_id = request.topic_id
-            if not topic_id:
+            if not conversation_id:
                 inferred = (request.message or "New Chat").strip().split("\n")[0][:60]
-                topic_id = await store.get_or_create_default_topic(request.user_id, inferred)
-            if not session_id:
-                session_id = await store.create_session(request.user_id, topic_id, title="New Chat")
+                conversation_id = await store.create_conversation(request.user_id, title=inferred, token_limit=request.token_limit or 128_000)
+            else:
+                convo = await store.get_conversation(conversation_id)
+                if not convo or convo.get("user_id") != request.user_id:
+                    raise HTTPException(status_code=403, detail="Forbidden")
         else:
-            if not session_id:
-                new_session = await rag_service.create_session(request.user_id)
-                session_id = new_session.session_id
+            if not conversation_id:
+                conversation_id = await store.create_conversation(user_id="anonymous", title="New Chat", token_limit=request.token_limit or 128_000)
         
         # Stream the response with Hybrid RAG service
-        # Prepare prior history
+        # Prepare prior history (summaries + recent)
         prior_messages = None
-        if request.user_id and session_id:
-            from langchain.schema import HumanMessage, AIMessage
-            history = await store.get_last_messages(session_id, limit=max(settings.chat_history_limit, 50))
+        try:
+            from langchain.schema import HumanMessage, AIMessage, SystemMessage
             prior_messages = []
+            summaries = await store.list_summaries(conversation_id)
+            for s in summaries:
+                prior_messages.append(SystemMessage(content=f"Conversation summary (layer {s.get('layer', 1)}): {s.get('summary_text', '')}"))
+            history = await store.get_last_messages(conversation_id, limit=max(settings.chat_history_limit, 50))
             for m in history:
                 if m.get("role") == "user":
                     prior_messages.append(HumanMessage(content=m.get("content", "")))
                 elif m.get("role") == "assistant":
                     prior_messages.append(AIMessage(content=m.get("content", "")))
+        except Exception:
+            prior_messages = None
 
         async for chunk in rag_service.stream_chat(
             message=request.message,
-            session_id=session_id,
+            session_id=conversation_id,
             user_id=request.user_id,
             use_rag=request.use_rag,
             chat_history_override=prior_messages,
@@ -271,195 +277,83 @@ async def stream_chat_response(rag_service: HybridRAGService, request: ChatReque
         yield f"data: Error: {str(e)}\n\n"
 
 
-@router.get("/topics", response_model=TopicListResponse)
-async def list_topics(user_id: str = Query(...), current_user: dict = Depends(get_current_user)):
-    if user_id != current_user.get("user_id"):
+@router.post("/conversations", response_model=ConversationInfo)
+async def create_conversation(request: ConversationCreateRequest, current_user: dict = Depends(get_current_user)):
+    if request.user_id and request.user_id != current_user.get("user_id"):
         raise HTTPException(status_code=403, detail="Forbidden")
     store = get_mongo_store()
-    topics = await store.list_topics(user_id)
-    topic_infos = [TopicInfo(**t) for t in topics]
-    return TopicListResponse(topics=topic_infos, total=len(topic_infos))
-
-
-@router.post("/topics", response_model=TopicInfo)
-async def create_topic(request: TopicCreateRequest, current_user: dict = Depends(get_current_user)):
-    if request.user_id != current_user.get("user_id"):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    store = get_mongo_store()
-    topic_id = await store.create_topic(request.user_id, request.title)
-    return TopicInfo(topic_id=topic_id, title=request.title, created_at=datetime.utcnow().isoformat(), session_count=0)
-
-
-@router.get("/topics/{topic_id}/sessions", response_model=SessionListResponse)
-async def list_sessions_under_topic(topic_id: str, user_id: str = Query(...), current_user: dict = Depends(get_current_user)):
-    if user_id != current_user.get("user_id"):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    store = get_mongo_store()
-    sessions = await store.list_sessions(user_id=user_id, topic_id=topic_id)
-    session_infos = [
-        SessionInfo(
-            session_id=s["session_id"],
-            user_id=user_id,
-            title=s["title"],
-            created_at=s["created_at"],
-            last_activity=s["last_activity"],
-            message_count=s.get("message_count", 0),
-        )
-        for s in sessions
-    ]
-    return SessionListResponse(sessions=session_infos, total=len(session_infos))
-
-
-@router.post("/topics/{topic_id}/sessions", response_model=SessionInfo)
-async def create_session_under_topic(topic_id: str, request: SessionCreateUnderTopicRequest, current_user: dict = Depends(get_current_user)):
-    if request.user_id != current_user.get("user_id"):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    store = get_mongo_store()
-    session_id = await store.create_session(user_id=request.user_id, topic_id=topic_id, title=request.title or "New Chat")
+    user_id = request.user_id or current_user.get("user_id")
+    conversation_id = await store.create_conversation(user_id=user_id, title=request.title or "New Chat", token_limit=request.token_limit or 128_000)
     now = datetime.utcnow().isoformat()
-    return SessionInfo(session_id=session_id, user_id=request.user_id, title=request.title or "New Chat", created_at=now, last_activity=now, message_count=0)
+    convo = await store.get_conversation(conversation_id)
+    return ConversationInfo(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        title=convo.get("title", request.title or "New Chat"),
+        created_at=convo.get("created_at", now),
+        last_activity=convo.get("last_activity", now),
+        message_count=int(convo.get("message_count", 0)),
+        token_count_total=int(convo.get("token_count_total", 0)),
+    )
 
 
-@router.get("/sessions/{session_id}/messages", response_model=SessionMessagesResponse)
-async def get_session_messages(session_id: str, current_user: dict = Depends(get_current_user)):
+@router.get("/conversations/{conversation_id}/messages")
+async def get_conversation_messages(conversation_id: str, current_user: dict = Depends(get_current_user)):
     store = get_mongo_store()
-    # Ensure the session belongs to current_user
-    sessions = await store.list_sessions(user_id=current_user.get("user_id"))
-    if session_id not in [s["session_id"] for s in sessions]:
+    convo = await store.get_conversation(conversation_id)
+    if not convo or convo.get("user_id") != current_user.get("user_id"):
         raise HTTPException(status_code=403, detail="Forbidden")
-    msgs = await store.get_last_messages(session_id=session_id, limit=100)
-    records = [MessageRecord(**m) for m in msgs]
-    return SessionMessagesResponse(session_id=session_id, messages=records)
+    msgs = await store.get_last_messages(conversation_id=conversation_id, limit=100)
+    return {"conversation_id": conversation_id, "messages": msgs}
 
 
-@router.post("/sessions", response_model=SessionInfo)
-async def create_session(
-    request: SessionCreateRequest,
-    rag_service: HybridRAGService = Depends(get_rag_service),
-    current_user: dict = Depends(get_current_user)
-):
-    """Create a new chat session"""
+@router.post("/sessions")
+async def deprecated_create_session():
+    raise HTTPException(status_code=410, detail="Use /chat/conversations instead")
+
+
+@router.get("/conversations", response_model=ConversationListResponse)
+async def list_conversations(user_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """List conversations for the authenticated user"""
     try:
         store = get_mongo_store()
-        if request.user_id and request.user_id != current_user.get("user_id"):
+        uid = user_id or current_user.get("user_id")
+        if uid != current_user.get("user_id"):
             raise HTTPException(status_code=403, detail="Forbidden")
-        if request.user_id:
-            topic_id = await store.create_topic(request.user_id, title="General")
-            session_id = await store.create_session(request.user_id, topic_id, title=request.title or "New Chat")
-            now = datetime.utcnow().isoformat()
-            return SessionInfo(
-                session_id=session_id,
-                user_id=request.user_id,
-                title=request.title or "New Chat",
-                created_at=now,
-                last_activity=now,
-                message_count=0
+        convos = await store.list_conversations(uid)
+        items = [
+            ConversationInfo(
+                conversation_id=c.get("conversation_id"),
+                user_id=uid,
+                title=c.get("title", "New Chat"),
+                created_at=c.get("created_at", datetime.utcnow().isoformat()),
+                last_activity=c.get("last_activity", datetime.utcnow().isoformat()),
+                message_count=int(c.get("message_count", 0)),
+                token_count_total=int(c.get("token_count_total", 0)),
             )
-        else:
-            session = await rag_service.create_session(request.user_id, request.title)
-            return SessionInfo(
-                session_id=session.session_id,
-                user_id=session.user_id,
-                title=session.title,
-                created_at=session.created_at.isoformat(),
-                last_activity=session.last_activity.isoformat(),
-                message_count=len(session.messages)
-            )
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/sessions", response_model=SessionListResponse)
-async def list_sessions(
-    user_id: Optional[str] = None,
-    rag_service: HybridRAGService = Depends(get_rag_service),
-    current_user: dict = Depends(get_current_user)
-):
-    """List chat sessions"""
-    try:
-        store = get_mongo_store()
-        if user_id:
-            if user_id != current_user.get("user_id"):
-                raise HTTPException(status_code=403, detail="Forbidden")
-            sessions_data = await store.list_sessions(user_id=user_id)
-            sessions = [
-                SessionInfo(
-                    session_id=s["session_id"],
-                    user_id=user_id,
-                    title=s.get("title", "New Chat"),
-                    created_at=s.get("created_at", datetime.utcnow().isoformat()),
-                    last_activity=s.get("last_activity", datetime.utcnow().isoformat()),
-                    message_count=s.get("message_count", 0),
-                )
-                for s in sessions_data
-            ]
-            return SessionListResponse(sessions=sessions, total=len(sessions))
-        else:
-            sessions_data = await rag_service.list_sessions(user_id)
-        
-            sessions = [
-                SessionInfo(
-                    session_id=session["session_id"],
-                    user_id=session.get("user_id"),
-                    title=session.get("title", "New Chat"),
-                    created_at=session.get("created_at", datetime.utcnow().isoformat()),
-                    last_activity=session.get("last_activity", datetime.utcnow().isoformat()),
-                    message_count=len(session.get("messages", []))
-                )
-                for session in sessions_data
-            ]
-            
-            return SessionListResponse(
-                sessions=sessions,
-                total=len(sessions)
-            )
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/sessions/{session_id}", response_model=SessionHistoryResponse)
-async def get_session(
-    session_id: str,
-    rag_service: HybridRAGService = Depends(get_rag_service),
-    current_user: dict = Depends(get_current_user)
-):
-    """Get chat session history from MongoDB if available, otherwise from in-memory sessions."""
-    try:
-        store = get_mongo_store()
-        # Access control: ensure session belongs to user
-        user_sessions = await store.list_sessions(user_id=current_user.get("user_id"))
-        if session_id not in [s["session_id"] for s in user_sessions]:
-            raise HTTPException(status_code=403, detail="Forbidden")
-        msgs = await store.get_last_messages(session_id=session_id, limit=100)
-        if msgs:
-            messages = [ChatMessageRequest(role=m["role"], content=m["content"]) for m in msgs]
-            now = datetime.utcnow().isoformat()
-            return SessionHistoryResponse(
-                session_id=session_id,
-                messages=messages,
-                title="Chat",
-                created_at=now,
-                last_activity=now,
-            )
-        # Fallback: in-memory/file session
-        session = await rag_service.get_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        messages = [
-            ChatMessageRequest(
-                role=msg.role,
-                content=msg.content
-            )
-            for msg in session.messages
+            for c in convos
         ]
-        return SessionHistoryResponse(
-            session_id=session.session_id,
+        return ConversationListResponse(conversations=items, total=len(items))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/conversations/{conversation_id}", response_model=ConversationHistoryResponse)
+async def get_conversation(conversation_id: str, current_user: dict = Depends(get_current_user)):
+    """Get conversation messages (after summarization deletions)."""
+    try:
+        store = get_mongo_store()
+        convo = await store.get_conversation(conversation_id)
+        if not convo or convo.get("user_id") != current_user.get("user_id"):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        msgs = await store.get_last_messages(conversation_id=conversation_id, limit=100)
+        messages = [ChatMessageRequest(role=m.get("role"), content=m.get("content", "")) for m in msgs]
+        return ConversationHistoryResponse(
+            conversation_id=conversation_id,
             messages=messages,
-            title=session.title,
-            created_at=session.created_at.isoformat(),
-            last_activity=session.last_activity.isoformat()
+            title=convo.get("title", "Chat"),
+            created_at=convo.get("created_at", datetime.utcnow().isoformat()),
+            last_activity=convo.get("last_activity", datetime.utcnow().isoformat()),
         )
     except HTTPException:
         raise
@@ -467,17 +361,18 @@ async def get_session(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/sessions/{session_id}")
-async def delete_session(
-    session_id: str,
-    rag_service: HybridRAGService = Depends(get_rag_service),
-    current_user: dict = Depends(get_current_user)
-):
-    """Delete a chat session"""
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a conversation and its messages/summaries."""
     try:
-        await rag_service.delete_session(session_id)
-        return {"message": "Session deleted successfully"}
-    
+        store = get_mongo_store()
+        convo = await store.get_conversation(conversation_id)
+        if not convo or convo.get("user_id") != current_user.get("user_id"):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        await store.db.messages.delete_many({"conversation_id": conversation_id})
+        await store.db.summaries.delete_many({"conversation_id": conversation_id})
+        await store.db.conversations.delete_one({"conversation_id": conversation_id})
+        return {"message": "Conversation deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

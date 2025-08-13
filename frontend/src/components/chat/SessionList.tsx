@@ -4,10 +4,10 @@
 
 import React from 'react';
 import { MessageSquare, Trash2, Plus, Calendar } from 'lucide-react';
-import { SessionInfo } from '../../types/chat';
+import { ConversationInfo } from '../../types/chat';
 
 interface SessionListProps {
-  sessions: SessionInfo[];
+  sessions: ConversationInfo[];
   currentSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
@@ -51,7 +51,7 @@ const SessionList: React.FC<SessionListProps> = ({
     }
     groups[date].push(session);
     return groups;
-  }, {} as Record<string, SessionInfo[]>);
+  }, {} as Record<string, ConversationInfo[]>);
 
   // Sort groups by recency
   const sortedGroups = Object.entries(groupedSessions).sort(([a], [b]) => {
@@ -105,13 +105,13 @@ const SessionList: React.FC<SessionListProps> = ({
                     .sort((a, b) => new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime())
                     .map((session) => (
                       <div
-                        key={session.session_id}
+                        key={session.conversation_id}
                         className={`group relative p-3 rounded-lg cursor-pointer transition-all ${
-                          currentSessionId === session.session_id
+                          currentSessionId === session.conversation_id
                             ? 'bg-blue-50 border-2 border-blue-200'
                             : 'bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                         }`}
-                        onClick={() => onSelectSession(session.session_id)}
+                        onClick={() => onSelectSession(session.conversation_id)}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
@@ -138,7 +138,7 @@ const SessionList: React.FC<SessionListProps> = ({
                             onClick={(e) => {
                               e.stopPropagation();
                               if (window.confirm('Are you sure you want to delete this chat session?')) {
-                                onDeleteSession(session.session_id);
+                                onDeleteSession(session.conversation_id);
                               }
                             }}
                             className="opacity-0 group-hover:opacity-100 ml-2 p-1 text-gray-400 hover:text-red-500 transition-all"
@@ -149,7 +149,7 @@ const SessionList: React.FC<SessionListProps> = ({
                         </div>
 
                         {/* Active indicator */}
-                        {currentSessionId === session.session_id && (
+                        {currentSessionId === session.conversation_id && (
                           <div className="absolute left-0 top-3 bottom-3 w-1 bg-blue-500 rounded-r"></div>
                         )}
                       </div>
