@@ -203,6 +203,39 @@ async def chat(
             for chunk in result.retrieved_chunks
         ]
         
+        # Build debug info for UI
+        debug_info: Dict[str, Any] = {}
+        try:
+            # System prompt from active user prompt
+            if request.user_id:
+                active_prompt = await store.get_active_rag_prompt(request.user_id)
+                if active_prompt and active_prompt.get("content"):
+                    debug_info["system_prompt"] = str(active_prompt.get("content"))
+            # Base prompt from service
+            if getattr(result, 'debug', None):
+                if isinstance(result.debug, dict):
+                    debug_info.update({k: v for k, v in result.debug.items() if k in ["base_prompt", "retriever_top_k", "used_chat_history"]})
+            # Summaries used
+            try:
+                summaries = await store.list_summaries(conversation_id)
+                debug_info["summaries"] = [s.get("summary_text", "") for s in summaries]
+            except Exception:
+                pass
+            # Question and context
+            debug_info["question"] = request.message
+            debug_info["context"] = [
+                {"content": rc.content, "score": rc.score, "metadata": rc.metadata}
+                for rc in retrieved_chunks
+            ]
+            # Timings
+            debug_info["timings"] = {
+                "retrieval_time": getattr(result, 'retrieval_time', 0.0),
+                "generation_time": getattr(result, 'generation_time', 0.0),
+                "total_time": getattr(result, 'total_time', 0.0),
+            }
+        except Exception:
+            pass
+
         response_obj = ChatResponse(
             message=result.message,
             conversation_id=conversation_id,
@@ -211,7 +244,8 @@ async def chat(
             retrieved_chunks=retrieved_chunks,
             retrieval_time=result.retrieval_time,
             generation_time=result.generation_time,
-            total_time=result.total_time
+            total_time=result.total_time,
+            debug=debug_info or None
         )
 
         # Store messages and run summarization if needed

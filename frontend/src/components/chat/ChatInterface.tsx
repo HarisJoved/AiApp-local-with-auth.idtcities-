@@ -41,6 +41,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     vector_db?: string;
     error?: string;
   } | null>(null);
+  const [showDebug, setShowDebug] = useState<boolean>(false);
+  const [lastDebug, setLastDebug] = useState<any>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingMessageRef = useRef<string>('');
@@ -223,13 +225,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
           summarize_target_ratio: options.summarizeTargetRatio,
         });
 
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
+        const assistantMessage: ChatMessage = {
+          role: 'assistant',
           content: response.message,
           timestamp: new Date().toISOString(),
-      };
+        };
 
-      setMessages(prev => [...prev, assistantMessage]);
+        setMessages(prev => [...prev, assistantMessage]);
+        setLastDebug(response.debug || null);
 
         // Update current session ID if it was created
         if (!currentSessionId && response.conversation_id) {
@@ -278,7 +281,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
 
       {/* Main chat area */}
       <div className="flex-1 flex flex-col">
-      {/* Header */}
+        {/* Header */}
         <div className="border-b bg-white p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -290,15 +293,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
                 <History className="w-5 h-5 text-gray-600" />
               </button>
               
-        <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2">
                 <MessageSquare className="w-6 h-6 text-blue-500" />
                 <h1 className="text-xl font-semibold text-gray-800">
                   Document Chat Assistant
                 </h1>
               </div>
-        </div>
+            </div>
 
-        <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2">
               {/* Service status */}
               <div className="flex items-center space-x-1">
                 {isServiceReady ? (
@@ -314,16 +317,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
                 )}
               </div>
 
-          <button
+              <button
                 onClick={createNewSession}
                 className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                 title="New chat"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Chat</span>
-          </button>
-        </div>
-      </div>
+              >
+                <Plus className="w-4 h-4" />
+                <span>New Chat</span>
+              </button>
+              <button
+                onClick={() => setShowDebug(v => !v)}
+                className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${showDebug ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}
+                title="Toggle debug"
+              >
+                <Settings className="w-4 h-4" />
+                <span>{showDebug ? 'Hide Debug' : 'Show Debug'}</span>
+              </button>
+            </div>
+          </div>
 
           {/* Service health info */}
           {serviceHealth && !isServiceReady && (
@@ -343,13 +354,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
               <div className="mt-1 text-xs text-yellow-700">
                 Please configure the missing components in the Settings tab.
               </div>
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
 
-                {/* Messages area */}
-        <div className="flex-1 overflow-y-auto bg-gray-50">
-          <div className="max-w-4xl mx-auto px-4 py-6">
+        {/* Messages area */}
+        <div className={`flex-1 overflow-y-auto bg-gray-50 ${showDebug ? 'grid grid-cols-2 gap-4' : ''}`}>
+          <div className={`${showDebug ? 'px-4 py-6' : 'max-w-4xl mx-auto px-4 py-6' }`}>
             {!backendConnected ? (
               <div className="text-center py-12">
                 <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
@@ -387,7 +398,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
                     <div>Vector DB: {serviceHealth.vector_db || 'Not configured'}</div>
                   </div>
                 )}
-                    </div>
+              </div>
             ) : (
               <div className="space-y-6">
                 {messages.map((message, index) => (
@@ -398,10 +409,90 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
                   />
                 ))}
                 <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+
+          {showDebug && (
+            <div className="px-4 py-6 border-l bg-white">
+              <h3 className="text-md font-semibold text-gray-800 mb-3">Debug View</h3>
+              {!lastDebug ? (
+                <div className="text-sm text-gray-500">Send a message to see debug info.</div>
+              ) : (
+                <div className="space-y-4 text-sm">
+                  {lastDebug.base_prompt && (
+                    <div>
+                      <div className="text-gray-700 font-medium mb-1">Base Prompt</div>
+                      <div className="whitespace-pre-wrap bg-gray-50 border rounded p-2">{lastDebug.base_prompt}</div>
+                    </div>
+                  )}
+                  {lastDebug.system_prompt && (
+                    <div>
+                      <div className="text-gray-700 font-medium mb-1">User Defined Prompt</div>
+                      <div className="whitespace-pre-wrap bg-gray-50 border rounded p-2">{lastDebug.system_prompt}</div>
+                    </div>
+                  )}
+                  {Array.isArray(lastDebug.used_chat_history) && lastDebug.used_chat_history.length > 0 && (
+                    <div>
+                      <div className="text-gray-700 font-medium mb-1">History</div>
+                      <div className="space-y-2">
+                        {lastDebug.used_chat_history
+                          .filter((h: any) => h.type !== 'SystemMessage')
+                          .map((h: any, idx: number) => (
+                            <div key={idx} className="bg-gray-50 border rounded p-2">
+                              <div className="text-xs text-gray-500 mb-1">{h.type}</div>
+                              <div className="whitespace-pre-wrap">{h.content}</div>
+                            </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {Array.isArray(lastDebug.summaries) && lastDebug.summaries.length > 0 && (
+                    <div>
+                      <div className="text-gray-700 font-medium mb-1">Summaries</div>
+                      <ul className="list-disc ml-5 space-y-1">
+                        {lastDebug.summaries.map((s: string, idx: number) => (
+                          <li key={idx} className="whitespace-pre-wrap">{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {lastDebug.question && (
+                    <div>
+                      <div className="text-gray-700 font-medium mb-1">Question</div>
+                      <div className="whitespace-pre-wrap bg-gray-50 border rounded p-2">{lastDebug.question}</div>
+                    </div>
+                  )}
+                  {Array.isArray(lastDebug.context) && lastDebug.context.length > 0 && (
+                    <div>
+                      <div className="text-gray-700 font-medium mb-1">Context Chunks ({lastDebug.context.length})</div>
+                      <div className="space-y-2">
+                        {lastDebug.context.map((c: any, idx: number) => (
+                          <div key={idx} className="bg-gray-50 border rounded p-2">
+                            <div className="text-xs text-gray-500 mb-1">Score: {typeof c.score === 'number' ? c.score.toFixed(3) : c.score}</div>
+                            <div className="whitespace-pre-wrap">{c.content}</div>
+                            {c.metadata && Object.keys(c.metadata).length > 0 && (
+                              <details className="mt-1">
+                                <summary className="cursor-pointer text-xs text-gray-600">Metadata</summary>
+                                <pre className="text-xs bg-white border rounded p-2 overflow-auto">{JSON.stringify(c.metadata, null, 2)}</pre>
+                              </details>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {lastDebug.timings && (
+                    <div>
+                      <div className="text-gray-700 font-medium mb-1">Timings</div>
+                      <pre className="text-xs bg-gray-50 border rounded p-2">{JSON.stringify(lastDebug.timings, null, 2)}</pre>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          </div>
+          )}
+        </div>
 
         {/* Error display */}
         {error && (

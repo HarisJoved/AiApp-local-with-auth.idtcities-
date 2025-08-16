@@ -33,6 +33,7 @@ class ChatResult(BaseModel):
     retrieval_time: float = 0.0
     generation_time: float = 0.0
     total_time: float = 0.0
+    debug: Optional[Dict[str, Any]] = None
 
 
 class StreamingCallbackHandler(BaseCallbackHandler):
@@ -72,6 +73,8 @@ class LangChainRAGService:
         
         # Conversation memories (per session)
         self.memories: Dict[str, ConversationBufferWindowMemory] = {}
+        # Store the RAG prompt text for debugging
+        self.rag_prompt_template_str: Optional[str] = None
     
     async def initialize(self) -> bool:
         """Initialize all RAG components"""
@@ -253,16 +256,24 @@ class LangChainRAGService:
         rag_prompt = PromptTemplate.from_template("""
 You are a helpful AI assistant. Use the following context from documents to answer the user's question.
 If you don't know the answer based on the context, just say so.
-
+ 
 Context:
 {context}
-
+ 
 Conversation History:
 {chat_history}
-
+ 
 Question: {question}
-
+ 
 Answer:""")
+        # Save instruction-only prompt for debugging (exclude variable placeholders)
+        try:
+            self.rag_prompt_template_str = (
+                "You are a helpful AI assistant. Use the following context from documents to answer the user's question. "
+                "If you don't know the answer based on the context, just say so."
+            )
+        except Exception:
+            self.rag_prompt_template_str = ""
         
         # Create conversational retrieval chain
         self.retrieval_qa = ConversationalRetrievalChain.from_llm(
@@ -420,6 +431,25 @@ Answer:""")
             session.add_message(assistant_message)
             await self.session_manager.save_session(session)
             
+            # Prepare debug info
+            debug_payload: Dict[str, Any] = {
+                "base_prompt": self.rag_prompt_template_str,
+                "retriever_top_k": self.retrieval_config.get("top_k"),
+            }
+            try:
+                if chat_history_override is not None:
+                    debug_payload["used_chat_history"] = [
+                        {"type": type(m).__name__, "content": getattr(m, 'content', str(m))}
+                        for m in chat_history_override
+                    ]
+                else:
+                    debug_payload["used_chat_history"] = [
+                        {"type": type(m).__name__, "content": getattr(m, 'content', str(m))}
+                        for m in memory.chat_memory.messages
+                    ]
+            except Exception:
+                pass
+
             return ChatResult(
                 message=response_text,
                 session_id=session.session_id,
@@ -428,7 +458,8 @@ Answer:""")
                 retrieved_chunks=retrieved_chunks,
                 retrieval_time=retrieval_time,
                 generation_time=generation_time,
-                total_time=total_time
+                total_time=total_time,
+                debug=debug_payload
             )
             
         except Exception as e:

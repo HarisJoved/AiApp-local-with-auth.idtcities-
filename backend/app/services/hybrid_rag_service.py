@@ -137,6 +137,7 @@ class HybridRAGService:
                     self.retrieval_time = rag_result.retrieval_time
                     self.generation_time = rag_result.generation_time
                     self.total_time = rag_result.total_time
+                    self.debug = None
             
             return ChatResult(result)
     

@@ -39,6 +39,20 @@ export interface ChatResponse {
   retrieval_time: number;
   generation_time: number;
   total_time: number;
+  debug?: {
+    system_prompt?: string;
+    base_prompt?: string;
+    retriever_top_k?: number;
+    used_chat_history?: Array<{ type: string; content: string }>;
+    summaries?: string[];
+    question?: string;
+    context?: RetrievedChunk[];
+    timings?: {
+      retrieval_time?: number;
+      generation_time?: number;
+      total_time?: number;
+    };
+  };
 }
 
 export interface ConversationInfo {
