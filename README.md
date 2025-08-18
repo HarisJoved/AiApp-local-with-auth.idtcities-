@@ -1,8 +1,7 @@
-# Document Embedding & AI Chat Platform
+# Snap4IDTCities-AIApp
 
 A modular, full-stack document processing and AI chat platform built with FastAPI and React. Upload documents, process them with selectable embedding models, store vectors in configurable vector databases, and interact with an intelligent chatbot that can answer questions about your documents using RAG (Retrieval-Augmented Generation).
 
-![Platform Architecture](docs/images/architecture.png)
 
 ## ✨ Features
 
