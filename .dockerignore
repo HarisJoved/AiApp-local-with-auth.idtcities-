@@ -1,0 +1,57 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Environment files
+.env
+.env.local
+.env.example
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Node modules (for frontend)
+node_modules/
+npm-debug.log*
+
+# Python cache (for backend)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Test files
+tests/
+test_*
+*_test.py
+
+# Coverage reports
+.coverage
+htmlcov/
+
+# Docker files
+Dockerfile*
+docker-compose*
+.dockerignore

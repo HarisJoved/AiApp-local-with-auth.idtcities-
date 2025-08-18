@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  backend:
+    image: ${DOCKERHUB_USERNAME:-sulaimanharoon}/embedder-backend:latest
+    container_name: embedder-backend
+    ports:
+      - "8888:8888"
+    environment:
+      - MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017/embedder}
+      - MONGODB_DB_NAME=${MONGODB_DB_NAME:-embedder}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+
+  frontend:
+    image: ${DOCKERHUB_USERNAME:-sulaimanharoon}/embedder-frontend:latest
+    container_name: embedder-frontend
+    ports:
+      - "3333:3333"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:6.0
+    container_name: embedder-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=embedder
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
