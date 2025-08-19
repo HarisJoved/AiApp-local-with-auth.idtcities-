@@ -52,7 +52,7 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add VERSION
-        git commit -m "Bump version to ${{ steps.new_version.outputs.new_version }} [skip ci]"
+        git commit -m "Bump version to ${{ steps.new_version.outputs.new_version }}"
         git push
       
     - name: Set up Docker Buildx
@@ -71,8 +71,8 @@ jobs:
         file: ./backend/Dockerfile
         push: ${{ github.event_name == 'push' }}
         tags: |
-          ${{ secrets.DOCKERHUB_USERNAME}}/AIapp-backend:latest
-          ${{ secrets.DOCKERHUB_USERNAME}}/AIapp-backend:${{ github.event_name == 'push' && steps.new_version.outputs.new_version || steps.version.outputs.current_version }}
+          ${{ secrets.DOCKERHUB_USERNAME}}/ai-app-backend:latest
+          ${{ secrets.DOCKERHUB_USERNAME}}/ai-app-backend:${{ github.event_name == 'push' && steps.new_version.outputs.new_version || steps.version.outputs.current_version }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
         
@@ -83,7 +83,7 @@ jobs:
         file: ./frontend/Dockerfile
         push: ${{ github.event_name == 'push' }}
         tags: |
-          ${{ secrets.DOCKERHUB_USERNAME}}/AIapp-frontend:latest
-          ${{ secrets.DOCKERHUB_USERNAME}}/AIapp-frontend:${{ github.event_name == 'push' && steps.new_version.outputs.new_version || steps.version.outputs.current_version }}
+          ${{ secrets.DOCKERHUB_USERNAME}}/ai-app-frontend:latest
+          ${{ secrets.DOCKERHUB_USERNAME}}/ai-app-frontend:${{ github.event_name == 'push' && steps.new_version.outputs.new_version || steps.version.outputs.current_version }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
