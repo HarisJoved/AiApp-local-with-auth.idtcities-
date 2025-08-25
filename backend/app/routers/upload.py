@@ -8,7 +8,7 @@ from app.models.document import DocumentType, DocumentUploadResponse, DocumentPr
 from app.models.search import SearchRequest, SearchResponse
 from app.services.document_service import document_service
 from app.config.settings import settings
-from app.auth.deps import get_current_user
+from app.auth.keycloak import get_current_user, KeycloakUser
 
 
 router = APIRouter(prefix="/upload", tags=["upload"])
@@ -47,7 +47,7 @@ async def process_document_background(document_id: str, file_content: bytes):
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
+    current_user: KeycloakUser = Depends(get_current_user)
 ):
     """Upload and process a document"""
     try:
@@ -81,7 +81,7 @@ async def upload_document(
 
 
 @router.get("/status/{document_id}", response_model=DocumentProcessingStatus)
-async def get_document_status(document_id: str, current_user: dict = Depends(get_current_user)):
+async def get_document_status(document_id: str, current_user: KeycloakUser = Depends(get_current_user)):
     """Get document processing status"""
     try:
         status = document_service.get_document_status(document_id)
@@ -97,7 +97,7 @@ async def get_document_status(document_id: str, current_user: dict = Depends(get
 
 
 @router.get("/list")
-async def list_documents(current_user: dict = Depends(get_current_user)):
+async def list_documents(current_user: KeycloakUser = Depends(get_current_user)):
     """List all documents"""
     try:
         documents = document_service.list_documents()
@@ -123,7 +123,7 @@ async def list_documents(current_user: dict = Depends(get_current_user)):
 
 
 @router.delete("/{document_id}")
-async def delete_document(document_id: str, current_user: dict = Depends(get_current_user)):
+async def delete_document(document_id: str, current_user: KeycloakUser = Depends(get_current_user)):
     """Delete a document and its vectors"""
     try:
         success = await document_service.delete_document(document_id)
@@ -139,7 +139,7 @@ async def delete_document(document_id: str, current_user: dict = Depends(get_cur
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search_documents(request: SearchRequest, current_user: dict = Depends(get_current_user)):
+async def search_documents(request: SearchRequest, current_user: KeycloakUser = Depends(get_current_user)):
     """Search for similar documents"""
     try:
         response = await document_service.search_documents(request)

@@ -14,15 +14,19 @@ import SearchInterface from './components/results/SearchInterface';
 import ChatInterface from './components/chat/ChatInterface';
 import LoginPage from './components/auth/LoginPage';
 import SignupPage from './components/auth/SignupPage';
+import KeycloakCallback from './components/auth/KeycloakCallback';
 
 // Services
 import { configAPI, generalAPI } from './services/api';
 import { AppConfig, HealthStatus, DocumentUploadResponse } from './types/api';
 
+// Contexts
+import { KeycloakProvider, useKeycloak } from './contexts/KeycloakContext';
+
 // Layout Components
 const Sidebar: React.FC = () => {
   const location = useLocation();
-  const authed = typeof window !== 'undefined' ? !!localStorage.getItem('auth_token') : false;
+  const { isAuthenticated, user, logout } = useKeycloak();
   
   const isActive = (path: string) => location.pathname === path;
   
@@ -33,11 +37,27 @@ const Sidebar: React.FC = () => {
       : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'}
   `;
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
   return (
     <div className="w-64 bg-white shadow-md h-screen overflow-y-auto">
       <div className="p-6">
         <h1 className="text-xl font-bold text-gray-900">Document Embedder</h1>
         <p className="text-sm text-gray-600 mt-1">AI-Powered Document Platform</p>
+        {isAuthenticated && user && (
+          <div className="mt-3 p-2 bg-gray-50 rounded-md">
+            {/* <p className="text-xs text-gray-600">Signed in as:</p>
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {user.name || user.preferred_username || user.email}
+            </p> */}
+          </div>
+        )}
       </div>
       
       <nav className="px-4 space-y-1">
@@ -72,7 +92,7 @@ const Sidebar: React.FC = () => {
         </Link>
 
         <div className="pt-4 border-t mt-4">
-          {!authed ? (
+          {!isAuthenticated ? (
             <>
               <Link to="/login" className={linkClass('/login')}>
                 <span>Login</span>
@@ -83,12 +103,7 @@ const Sidebar: React.FC = () => {
             </>
           ) : (
             <button
-              onClick={() => {
-                localStorage.removeItem('auth_token');
-                localStorage.removeItem('user_id');
-                localStorage.removeItem('username');
-                window.location.href = '/login';
-              }}
+              onClick={handleLogout}
               className="w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900"
             >
               Logout
@@ -150,10 +165,21 @@ const ChatPage: React.FC = () => (
 );
 
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-  if (!token) {
+  const { isAuthenticated, isLoading } = useKeycloak();
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <span className="ml-3 text-gray-600">Loading...</span>
+      </div>
+    );
+  }
+  
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
+  
   return children;
 };
 
@@ -363,8 +389,8 @@ const HealthPage: React.FC = () => {
   );
 };
 
-// Main App Component
-const App: React.FC = () => {
+// App Layout Component (wrapped with Keycloak context)
+const AppLayout: React.FC = () => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const handleUpload = () => {
@@ -376,26 +402,36 @@ const App: React.FC = () => {
   };
 
   return (
-    <Router>
-      <div className="flex h-screen bg-gray-100">
-        <Sidebar />
-        
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-7xl mx-auto px-6 py-8">
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/signup" element={<SignupPage />} />
-              <Route path="/" element={<ProtectedRoute><UploadPage onUpload={handleUpload} /></ProtectedRoute>} />
-              <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
-              <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
-              <Route path="/documents" element={<ProtectedRoute><DocumentsPage refreshTrigger={refreshTrigger} /></ProtectedRoute>} />
-              <Route path="/config" element={<ProtectedRoute><ConfigPage onConfigUpdate={handleConfigUpdate} /></ProtectedRoute>} />
-              <Route path="/health" element={<ProtectedRoute><HealthPage /></ProtectedRoute>} />
-            </Routes>
-          </div>
-        </main>
-      </div>
-    </Router>
+    <div className="flex h-screen bg-gray-100">
+      <Sidebar />
+      
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
+            <Route path="/auth/callback" element={<KeycloakCallback />} />
+            <Route path="/" element={<ProtectedRoute><UploadPage onUpload={handleUpload} /></ProtectedRoute>} />
+            <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+            <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
+            <Route path="/documents" element={<ProtectedRoute><DocumentsPage refreshTrigger={refreshTrigger} /></ProtectedRoute>} />
+            <Route path="/config" element={<ProtectedRoute><ConfigPage onConfigUpdate={handleConfigUpdate} /></ProtectedRoute>} />
+            <Route path="/health" element={<ProtectedRoute><HealthPage /></ProtectedRoute>} />
+          </Routes>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+// Main App Component
+const App: React.FC = () => {
+  return (
+    <KeycloakProvider>
+      <Router>
+        <AppLayout />
+      </Router>
+    </KeycloakProvider>
   );
 };
 

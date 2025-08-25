@@ -1,0 +1,25 @@
+{
+    "clientId": "embedder-client",
+    "protocol": "openid-connect",
+    "enabled": true,
+    "publicClient": false,
+    "bearerOnly": false,
+    "standardFlowEnabled": true,
+    "directAccessGrantsEnabled": true,
+    "implicitFlowEnabled": false,
+    "serviceAccountsEnabled": false,
+    "authorizationServicesEnabled": false,
+    "rootUrl": "http://localhost:3333",
+    "baseUrl": "http://localhost:3333",
+    "redirectUris": [
+      "http://localhost:3333/*"
+    ],
+    "webOrigins": [
+      "http://localhost:3333"
+    ],
+    "adminUrl": "http://localhost:3333",
+    "attributes": {
+      "post.logout.redirect.uris": "http://localhost:3333/*"
+    }
+  }
+  

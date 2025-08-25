@@ -4,13 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from passlib.context import CryptContext
-from jose import jwt
-
 from app.config.settings import settings
-
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class MongoChatStore:
@@ -20,44 +14,32 @@ class MongoChatStore:
         self.client = AsyncIOMotorClient(uri)
         self.db: AsyncIOMotorDatabase = self.client[db_name]
 
-    # ---------- Auth helpers ----------
-    @staticmethod
-    def hash_password(password: str) -> str:
-        return pwd_context.hash(password)
-
-    @staticmethod
-    def verify_password(password: str, password_hash: str) -> bool:
-        return pwd_context.verify(password, password_hash)
-
-    @staticmethod
-    def create_access_token(data: dict, expires_minutes: int) -> str:
-        to_encode = data.copy()
-        expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
-        to_encode.update({"exp": expire})
-        return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
-
-    # ---------- Users ----------
-    async def create_user(self, username: str, password: str) -> Dict[str, Any]:
-        existing = await self.db.users.find_one({"username": username})
+    # ---------- User management for Keycloak integration ----------
+    async def ensure_user_exists(self, user_id: str, username: str, email: str) -> Dict[str, Any]:
+        """Ensure user exists in our database (for Keycloak users)."""
+        existing = await self.db.users.find_one({"user_id": user_id})
         if existing:
-            raise ValueError("Username already exists")
-        user_id = str(uuid.uuid4())
+            # Update user info if needed
+            await self.db.users.update_one(
+                {"user_id": user_id},
+                {"$set": {
+                    "username": username,
+                    "email": email,
+                    "last_login": datetime.utcnow().isoformat()
+                }}
+            )
+            return existing
+        
+        # Create new user record
         doc = {
             "user_id": user_id,
             "username": username,
-            "password_hash": self.hash_password(password),
+            "email": email,
             "created_at": datetime.utcnow().isoformat(),
+            "last_login": datetime.utcnow().isoformat()
         }
         await self.db.users.insert_one(doc)
-        return {"user_id": user_id, "username": username, "created_at": doc["created_at"]}
-
-    async def authenticate_user(self, username: str, password: str) -> Optional[Dict[str, Any]]:
-        user = await self.db.users.find_one({"username": username})
-        if not user:
-            return None
-        if not self.verify_password(password, user.get("password_hash", "")):
-            return None
-        return {"user_id": user["user_id"], "username": user["username"]}
+        return {"user_id": user_id, "username": username, "email": email}
 
     async def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
         return await self.db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
@@ -381,7 +363,14 @@ mongo_store: Optional[MongoChatStore] = None
 def get_mongo_store() -> MongoChatStore:
     global mongo_store
     if mongo_store is None:
-        mongo_store = MongoChatStore(settings.mongo_uri, settings.mongo_db_name)
+        print(f"DEBUG: Initializing MongoDB store with URI: {settings.mongodb_uri}")
+        print(f"DEBUG: MongoDB database name: {settings.mongodb_db_name}")
+        try:
+            mongo_store = MongoChatStore(settings.mongodb_uri, settings.mongodb_db_name)
+            print("DEBUG: MongoDB store initialized successfully")
+        except Exception as e:
+            print(f"DEBUG: Error initializing MongoDB store: {str(e)}")
+            raise
     return mongo_store
 
 

@@ -17,6 +17,14 @@ async def lifespan(app: FastAPI):
     # Startup
     print("Starting Document Embedding Platform...")
     
+    # Initialize Keycloak authentication
+    try:
+        from app.auth.keycloak import init_keycloak_auth
+        init_keycloak_auth()
+        print("Keycloak authentication initialized")
+    except Exception as e:
+        print(f"Failed to initialize Keycloak auth: {e}")
+    
     # Load existing configuration
     await config_manager.load_config()
     

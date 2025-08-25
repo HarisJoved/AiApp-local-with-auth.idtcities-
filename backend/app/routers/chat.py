@@ -26,11 +26,10 @@ from app.models.chat import (
 from app.models.config import ChatModelConfig
 from app.services.hybrid_rag_service import HybridRAGService
 from app.core.chat_models.base import ChatMessage
-from app.routers.auth import router as _auth_router  # ensure module import doesn't break
+from app.auth.keycloak import get_current_user, KeycloakUser
 from app.core.session.session_manager import SessionManager, FileSessionStorage, InMemorySessionStorage
 from app.config.settings import config_manager, settings
 from app.services.mongo_chat_store import get_mongo_store
-from app.auth.deps import get_current_user
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -102,7 +101,7 @@ def get_chat_graph():
 async def chat(
     request: ChatRequest,
     rag_service: HybridRAGService = Depends(get_rag_service),
-    current_user: dict = Depends(get_current_user)
+    current_user: KeycloakUser = Depends(get_current_user)
 ):
     """
     Chat with the AI assistant
@@ -125,7 +124,7 @@ async def chat(
             )
         
         # Bind request to authenticated user if not provided
-        request.user_id = request.user_id or current_user.get("user_id")
+        request.user_id = request.user_id or current_user.sub
 
         # Prepare kwargs for model
         kwargs = {}
@@ -326,30 +325,45 @@ async def stream_chat_response(rag_service: HybridRAGService, request: ChatReque
 
 
 @router.post("/conversations", response_model=ConversationInfo)
-async def create_conversation(request: ConversationCreateRequest, current_user: dict = Depends(get_current_user)):
-    if request.user_id and request.user_id != current_user.get("user_id"):
+async def create_conversation(request: ConversationCreateRequest, current_user: KeycloakUser = Depends(get_current_user)):
+    print(f"DEBUG: Creating conversation for user: {current_user.sub}")
+    print(f"DEBUG: Request user_id: {request.user_id}")
+    print(f"DEBUG: Request title: {request.title}")
+    if request.user_id and request.user_id != current_user.sub:
+        print(f"DEBUG: User ID mismatch - request: {request.user_id}, current: {current_user.sub}")
         raise HTTPException(status_code=403, detail="Forbidden")
-    store = get_mongo_store()
-    user_id = request.user_id or current_user.get("user_id")
-    conversation_id = await store.create_conversation(user_id=user_id, title=request.title or "New Chat", token_limit=request.token_limit or 128_000)
-    now = datetime.utcnow().isoformat()
-    convo = await store.get_conversation(conversation_id)
-    return ConversationInfo(
-        conversation_id=conversation_id,
-        user_id=user_id,
-        title=convo.get("title", request.title or "New Chat"),
-        created_at=convo.get("created_at", now),
-        last_activity=convo.get("last_activity", now),
-        message_count=int(convo.get("message_count", 0)),
-        token_count_total=int(convo.get("token_count_total", 0)),
-    )
+    try:
+        store = get_mongo_store()
+        print(f"DEBUG: MongoDB store initialized: {store is not None}")
+        user_id = request.user_id or current_user.sub
+        print(f"DEBUG: Using user_id: {user_id}")
+        conversation_id = await store.create_conversation(user_id=user_id, title=request.title or "New Chat", token_limit=request.token_limit or 128_000)
+        print(f"DEBUG: Created conversation with ID: {conversation_id}")
+        now = datetime.utcnow().isoformat()
+        convo = await store.get_conversation(conversation_id)
+        print(f"DEBUG: Retrieved conversation: {convo}")
+        return ConversationInfo(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            title=convo.get("title", request.title or "New Chat"),
+            created_at=convo.get("created_at", now),
+            last_activity=convo.get("last_activity", now),
+            message_count=int(convo.get("message_count", 0)),
+            token_count_total=int(convo.get("token_count_total", 0)),
+        )
+    except Exception as e:
+        print(f"DEBUG: Error in create_conversation: {str(e)}")
+        print(f"DEBUG: Error type: {type(e)}")
+        import traceback
+        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/conversations/{conversation_id}/messages")
-async def get_conversation_messages(conversation_id: str, current_user: dict = Depends(get_current_user)):
+async def get_conversation_messages(conversation_id: str, current_user: KeycloakUser = Depends(get_current_user)):
     store = get_mongo_store()
     convo = await store.get_conversation(conversation_id)
-    if not convo or convo.get("user_id") != current_user.get("user_id"):
+    if not convo or convo.get("user_id") != current_user.sub:
         raise HTTPException(status_code=403, detail="Forbidden")
     msgs = await store.get_last_messages(conversation_id=conversation_id, limit=100)
     return {"conversation_id": conversation_id, "messages": msgs}
@@ -361,14 +375,18 @@ async def deprecated_create_session():
 
 
 @router.get("/conversations", response_model=ConversationListResponse)
-async def list_conversations(user_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+async def list_conversations(user_id: Optional[str] = None, current_user: KeycloakUser = Depends(get_current_user)):
     """List conversations for the authenticated user"""
     try:
+        print(f"DEBUG: Listing conversations for user: {current_user.sub}")
         store = get_mongo_store()
-        uid = user_id or current_user.get("user_id")
-        if uid != current_user.get("user_id"):
+        print(f"DEBUG: MongoDB store initialized: {store is not None}")
+        uid = user_id or current_user.sub
+        if uid != current_user.sub:
             raise HTTPException(status_code=403, detail="Forbidden")
+        print(f"DEBUG: About to call list_conversations for uid: {uid}")
         convos = await store.list_conversations(uid)
+        print(f"DEBUG: Retrieved {len(convos)} conversations")
         items = [
             ConversationInfo(
                 conversation_id=c.get("conversation_id"),
@@ -381,18 +399,23 @@ async def list_conversations(user_id: Optional[str] = None, current_user: dict =
             )
             for c in convos
         ]
+        print(f"DEBUG: Returning {len(items)} conversation items")
         return ConversationListResponse(conversations=items, total=len(items))
     except Exception as e:
+        print(f"DEBUG: Error in list_conversations: {str(e)}")
+        print(f"DEBUG: Error type: {type(e)}")
+        import traceback
+        print(f"DEBUG: Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationHistoryResponse)
-async def get_conversation(conversation_id: str, current_user: dict = Depends(get_current_user)):
+async def get_conversation(conversation_id: str, current_user: KeycloakUser = Depends(get_current_user)):
     """Get conversation messages (after summarization deletions)."""
     try:
         store = get_mongo_store()
         convo = await store.get_conversation(conversation_id)
-        if not convo or convo.get("user_id") != current_user.get("user_id"):
+        if not convo or convo.get("user_id") != current_user.sub:
             raise HTTPException(status_code=403, detail="Forbidden")
         msgs = await store.get_last_messages(conversation_id=conversation_id, limit=100)
         messages = [ChatMessageRequest(role=m.get("role"), content=m.get("content", "")) for m in msgs]
@@ -410,12 +433,12 @@ async def get_conversation(conversation_id: str, current_user: dict = Depends(ge
 
 
 @router.delete("/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str, current_user: dict = Depends(get_current_user)):
+async def delete_conversation(conversation_id: str, current_user: KeycloakUser = Depends(get_current_user)):
     """Delete a conversation and its messages/summaries."""
     try:
         store = get_mongo_store()
         convo = await store.get_conversation(conversation_id)
-        if not convo or convo.get("user_id") != current_user.get("user_id"):
+        if not convo or convo.get("user_id") != current_user.sub:
             raise HTTPException(status_code=403, detail="Forbidden")
         await store.db.messages.delete_many({"conversation_id": conversation_id})
         await store.db.summaries.delete_many({"conversation_id": conversation_id})
@@ -530,9 +553,9 @@ async def debug_chat_service():
 # ---------- RAG Prompt Management Endpoints ----------
 
 @router.get("/prompts", response_model=RAGPromptListResponse)
-async def list_prompts(current_user: dict = Depends(get_current_user)):
+async def list_prompts(current_user: KeycloakUser = Depends(get_current_user)):
     store = get_mongo_store()
-    prompts = await store.list_rag_prompts(current_user.get("user_id"))
+    prompts = await store.list_rag_prompts(current_user.sub)
     items = [
         RAGPromptInfo(
             prompt_id=p.get("prompt_id"),
@@ -548,9 +571,9 @@ async def list_prompts(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/prompts", response_model=RAGPromptInfo)
-async def create_prompt(request: RAGPromptCreate, current_user: dict = Depends(get_current_user)):
+async def create_prompt(request: RAGPromptCreate, current_user: KeycloakUser = Depends(get_current_user)):
     store = get_mongo_store()
-    res = await store.create_rag_prompt(current_user.get("user_id"), request.name, request.content, set_active=request.set_active)
+    res = await store.create_rag_prompt(current_user.sub, request.name, request.content, set_active=request.set_active)
     saved = await store.db.rag_prompts.find_one({"prompt_id": res["prompt_id"]}, {"_id": 0})
     return RAGPromptInfo(
         prompt_id=saved.get("prompt_id"),
@@ -563,9 +586,9 @@ async def create_prompt(request: RAGPromptCreate, current_user: dict = Depends(g
 
 
 @router.get("/prompts/active", response_model=RAGPromptActiveResponse)
-async def get_active_prompt(current_user: dict = Depends(get_current_user)):
+async def get_active_prompt(current_user: KeycloakUser = Depends(get_current_user)):
     store = get_mongo_store()
-    p = await store.get_active_rag_prompt(current_user.get("user_id"))
+    p = await store.get_active_rag_prompt(current_user.sub)
     if not p:
         return RAGPromptActiveResponse(prompt=None)
     return RAGPromptActiveResponse(prompt=RAGPromptInfo(
@@ -579,18 +602,18 @@ async def get_active_prompt(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/prompts/{prompt_id}/activate")
-async def activate_prompt(prompt_id: str, current_user: dict = Depends(get_current_user)):
+async def activate_prompt(prompt_id: str, current_user: KeycloakUser = Depends(get_current_user)):
     store = get_mongo_store()
-    await store.set_active_rag_prompt(current_user.get("user_id"), prompt_id)
+    await store.set_active_rag_prompt(current_user.sub, prompt_id)
     return {"message": "Prompt set as active"}
 
 
 @router.patch("/prompts/{prompt_id}", response_model=RAGPromptInfo)
-async def update_prompt(prompt_id: str, request: RAGPromptUpdate, current_user: dict = Depends(get_current_user)):
+async def update_prompt(prompt_id: str, request: RAGPromptUpdate, current_user: KeycloakUser = Depends(get_current_user)):
     store = get_mongo_store()
-    await store.update_rag_prompt(current_user.get("user_id"), prompt_id, request.model_dump(exclude_unset=True))
+    await store.update_rag_prompt(current_user.sub, prompt_id, request.model_dump(exclude_unset=True))
     saved = await store.db.rag_prompts.find_one({"prompt_id": prompt_id}, {"_id": 0})
-    if not saved or saved.get("user_id") != current_user.get("user_id"):
+    if not saved or saved.get("user_id") != current_user.sub:
         raise HTTPException(status_code=404, detail="Prompt not found")
     return RAGPromptInfo(
         prompt_id=saved.get("prompt_id"),
@@ -603,10 +626,10 @@ async def update_prompt(prompt_id: str, request: RAGPromptUpdate, current_user: 
 
 
 @router.delete("/prompts/{prompt_id}")
-async def delete_prompt(prompt_id: str, current_user: dict = Depends(get_current_user)):
+async def delete_prompt(prompt_id: str, current_user: KeycloakUser = Depends(get_current_user)):
     store = get_mongo_store()
     saved = await store.db.rag_prompts.find_one({"prompt_id": prompt_id}, {"user_id": 1, "_id": 0})
-    if not saved or saved.get("user_id") != current_user.get("user_id"):
+    if not saved or saved.get("user_id") != current_user.sub:
         raise HTTPException(status_code=404, detail="Prompt not found")
-    await store.delete_rag_prompt(current_user.get("user_id"), prompt_id)
+    await store.delete_rag_prompt(current_user.sub, prompt_id)
     return {"message": "Prompt deleted"}

@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useKeycloak } from '../../contexts/KeycloakContext';
 import { MessageSquare, Plus, History, AlertCircle, CheckCircle, Settings } from 'lucide-react';
 import ChatMessageComponent from './ChatMessage';
 import ChatInput, { ChatInputOptions } from './ChatInput';
@@ -15,18 +16,11 @@ interface ChatInterfaceProps {
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
+  const { user, isAuthenticated } = useKeycloak();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessions, setSessions] = useState<ConversationInfo[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string>(() => {
-    const authed = localStorage.getItem('user_id');
-    if (authed) return authed;
-    const existing = localStorage.getItem('demo_user_id');
-    if (existing) return existing;
-    const generated = 'user-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem('demo_user_id', generated);
-    return generated;
-  });
+  const [userId, setUserId] = useState<string | null>(null);
   // topicId removed in conversation model
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -47,6 +41,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingMessageRef = useRef<string>('');
 
+  // Update userId when Keycloak user changes
+  useEffect(() => {
+    if (isAuthenticated && user?.sub) {
+      setUserId(user.sub);
+    } else {
+      setUserId(null);
+    }
+  }, [isAuthenticated, user]);
+
   // Auto-scroll to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -56,11 +59,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
     scrollToBottom();
   }, [messages]);
 
-  // Load service health on mount
+  // Load service health and sessions when user is authenticated
   useEffect(() => {
-    loadServiceHealth();
-    loadSessions();
-  }, []);
+    if (userId) {
+      loadServiceHealth();
+      loadSessions();
+    }
+  }, [userId]);
 
   const loadServiceHealth = async () => {
     try {
@@ -83,6 +88,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   };
 
   const loadSessions = async () => {
+    if (!userId) return;
     try {
       const response = await chatService.listConversations(userId);
       setSessions(response.conversations);
@@ -92,6 +98,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   };
 
   const createNewSession = async () => {
+    if (!userId) return;
     try {
       const session = await chatService.createConversation({ user_id: userId });
       setCurrentSessionId(session.conversation_id);
@@ -131,7 +138,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ className = '' }) => {
   };
 
   const sendMessage = async (content: string, options: ChatInputOptions) => {
-    if (!content.trim()) return;
+    if (!content.trim() || !userId) return;
 
     const userMessage: ChatMessage = {
       role: 'user',

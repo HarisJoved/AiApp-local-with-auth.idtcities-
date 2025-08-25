@@ -18,24 +18,75 @@ const api = axios.create({
   timeout: 30000,
 });
 
-// Attach token if available and keep it in sync
-const savedToken = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-if (savedToken) {
-  api.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
-}
-api.interceptors.request.use((config) => {
+// Import Keycloak service for token management
+let keycloakService: any = null;
+
+// Lazy import to avoid circular dependencies
+const getKeycloakService = async () => {
+  if (!keycloakService) {
+    const module = await import('./keycloakService');
+    keycloakService = module.keycloakService;
+  }
+  return keycloakService;
+};
+
+// Request interceptor to attach Keycloak token
+api.interceptors.request.use(async (config) => {
   try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    const service = await getKeycloakService();
+    const token = service.getToken();
+    const isAuthenticated = service.isAuthenticated();
+    
+    console.log('API Request Debug:', {
+      url: config.url,
+      isAuthenticated,
+      hasToken: !!token,
+      tokenLength: token?.length || 0
+    });
+    
     if (token) {
-      (config.headers as any)['Authorization'] = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`;
+      console.log('Authorization header added to request');
     } else {
-      if ((config.headers as any)['Authorization']) {
-        delete (config.headers as any)['Authorization'];
-      }
+      delete config.headers.Authorization;
+      console.warn('No token available for request');
     }
-  } catch {}
+  } catch (error) {
+    console.warn('Failed to get Keycloak token:', error);
+    delete config.headers.Authorization;
+  }
+  
   return config;
 });
+
+// Response interceptor to handle token expiration
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // If we get a 401 and haven't already tried to refresh
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      try {
+        const service = await getKeycloakService();
+        const refreshed = await service.updateToken();
+        
+        if (refreshed) {
+          const token = service.getToken();
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+        // Redirect to login will be handled by Keycloak context
+      }
+    }
+    
+    return Promise.reject(error);
+  }
+);
 
 // Upload API
 export const uploadAPI = {

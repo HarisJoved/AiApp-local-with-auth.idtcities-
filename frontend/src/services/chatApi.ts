@@ -27,28 +27,38 @@ const chatApi = axios.create({
   },
 });
 
-// Attach token to axios if present
-const saved = localStorage.getItem('auth_token');
-if (saved) {
-  chatApi.defaults.headers.common['Authorization'] = `Bearer ${saved}`;
-}
+// Import Keycloak service for token management
+let keycloakService: any = null;
+
+// Lazy import to avoid circular dependencies
+const getKeycloakService = async () => {
+  if (!keycloakService) {
+    const module = await import('./keycloakService');
+    keycloakService = module.keycloakService;
+  }
+  return keycloakService;
+};
+
+// Request interceptor to attach Keycloak token
+chatApi.interceptors.request.use(async (config) => {
+  try {
+    const service = await getKeycloakService();
+    const token = service.getToken();
+    
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      delete config.headers.Authorization;
+    }
+  } catch (error) {
+    console.warn('Failed to get Keycloak token:', error);
+    delete config.headers.Authorization;
+  }
+  
+  return config;
+});
 
 export const chatService = {
-  async signup(username: string, password: string): Promise<{ user_id: string; username: string }> {
-    const response = await chatApi.post('/auth/signup', { username, password });
-    return response.data;
-  },
-  async login(username: string, password: string): Promise<{ access_token: string; token_type: string; user_id: string; username: string }> {
-    const response = await chatApi.post('/auth/login', { username, password });
-    const token = response.data?.access_token;
-    if (token) {
-      chatApi.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      localStorage.setItem('auth_token', token);
-      localStorage.setItem('user_id', response.data.user_id);
-      localStorage.setItem('username', response.data.username);
-    }
-    return response.data;
-  },
   /**
    * Send a chat message
    */
@@ -68,7 +78,8 @@ export const chatService = {
   ): Promise<void> {
     try {
       const streamRequest = { ...request, stream: true };
-      const token = localStorage.getItem('auth_token');
+      const service = await getKeycloakService();
+      const token = service.getToken();
       const response = await fetch(`${API_BASE_URL}/chat/`, {
         method: 'POST',
         headers: {
