@@ -13,7 +13,7 @@ export interface KeycloakUser {
 }
 
 class KeycloakService {
-  private keycloak: Keycloak | null = null;
+  private keycloak: any = null;
   private initialized = false;
 
   async init(): Promise<boolean> {
@@ -30,7 +30,7 @@ class KeycloakService {
         return false;
       }
 
-      this.keycloak = new Keycloak({
+      this.keycloak = new (Keycloak as any)({
         url: config.server_url,
         realm: config.realm,
         clientId: config.client_id,

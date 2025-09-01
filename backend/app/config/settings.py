@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, env="PORT")
     
     # CORS settings
-    cors_origins: str = Field(default="http://localhost:3000,http://localhost:3001", env="CORS_ORIGINS")
+    cors_origins: str = Field(default="http://localhost:3000,http://localhost:3001,https://auth.idtcities.com", env="CORS_ORIGINS")
     
     # Upload settings
     upload_dir: str = Field(default="/tmp/uploads", env="UPLOAD_DIR")
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     chat_history_limit: int = Field(default=10, env="CHAT_HISTORY_LIMIT")
 
     # Keycloak settings
-    keycloak_server_url: str = Field(default="http://localhost:8080", env="KEYCLOAK_SERVER_URL")
+    keycloak_server_url: str = Field(default="https://auth.idtcities.com", env="KEYCLOAK_SERVER_URL")
     keycloak_realm: str = Field(default="embedder", env="KEYCLOAK_REALM")
     keycloak_client_id: str = Field(default="embedder-client", env="KEYCLOAK_CLIENT_ID")
     keycloak_client_secret: str = Field(default="your_client_secret_here", env="KEYCLOAK_CLIENT_SECRET")

@@ -11,10 +11,10 @@ services:
       - backend_node_modules:/app/node_modules
     environment:
       - PORT=8888
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:3333
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:3333,https://auth.idtcities.com
       - MONGODB_URI=${MONGODB_URI:-mongodb://mongodb:27017/embedder}
       - MONGODB_DB_NAME=${MONGODB_DB_NAME:-embedder}
-      - KEYCLOAK_SERVER_URL=http://keycloak:8080
+      - KEYCLOAK_SERVER_URL=https://auth.idtcities.com
       - KEYCLOAK_REALM=${KEYCLOAK_REALM:-embedder}
       - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-embedder-client}
       - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
@@ -27,7 +27,6 @@ services:
       - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT}
     depends_on:
       - mongodb
-      - keycloak
     restart: unless-stopped
 
   frontend:
@@ -60,39 +59,7 @@ services:
       - mongodb_data:/data/db
     restart: unless-stopped
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:23.0.0
-    container_name: embedder-keycloak
-    command: start-dev
-    ports:
-      - "8080:8080"
-    environment:
-      - KEYCLOAK_ADMIN=admin
-      - KEYCLOAK_ADMIN_PASSWORD=admin
-      - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak
-      - KC_DB_USERNAME=keycloak
-      - KC_DB_PASSWORD=keycloak
-      - KC_HOSTNAME_STRICT=false
-      - KC_HOSTNAME_STRICT_HTTPS=false
-      - KC_HTTP_ENABLED=true
-    depends_on:
-      - postgres
-    restart: unless-stopped
-
-  postgres:
-    image: postgres:15
-    container_name: embedder-postgres
-    environment:
-      - POSTGRES_DB=keycloak
-      - POSTGRES_USER=keycloak
-      - POSTGRES_PASSWORD=keycloak
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-
 volumes:
   mongodb_data:
-  postgres_data:
   backend_node_modules:
   frontend_node_modules:
