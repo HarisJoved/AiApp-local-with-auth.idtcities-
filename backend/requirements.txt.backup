@@ -1,0 +1,68 @@
+# FastAPI and web server
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Data validation and settings
+pydantic
+pydantic-settings
+
+# Document processing with LangChain
+langchain
+langchain-community
+
+# LangChain integrations for RAG
+langchain-openai>=0.0.2
+langchain-google-genai>=0.0.6
+langchain-pinecone>=0.0.3
+langchain-chroma>=0.1.0
+langchain-huggingface>=0.0.1
+
+# Document loaders
+pypdf
+docx2txt
+unstructured[local-inference]
+python-magic
+python-pptx  # For PowerPoint files
+openpyxl  # For Excel files
+xlrd  # For older Excel files (.xls)
+
+# Text processing
+tiktoken
+
+# Embeddings
+openai
+sentence-transformers
+torch
+transformers
+
+# Chat models
+google-generativeai>=0.3.0
+aiohttp>=3.8.0
+
+# Vector databases
+pinecone
+chromadb
+qdrant-client
+
+# Pinecone for LangChain
+pinecone[grpc]
+
+# Utilities
+python-dotenv
+aiofiles
+httpx
+
+# Auth and persistence
+motor
+pymongo
+python-keycloak>=3.0.0
+python-jose[cryptography]>=3.3.0
+requests>=2.25.0
+
+# Development and testing
+pytest
+pytest-asyncio
+black
+isort
+mypy
